@@ -31,3 +31,16 @@ export interface ScriptData {
   vlanLines: string;
   [key: string]: any;
 }
+
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  password?: string;
+  role: 'admin' | 'operator' | 'teknisi';
+  createdAt?: string;
+}
+
+export type NavMenu = 'generator' | 'olt' | 'area' | 'template' | 'shortcut' | 'speed' | 'user';
+
+

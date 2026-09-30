@@ -377,5 +377,15 @@
     "cek onu by SN": "show gpon onu by sn {sn}",
     "status wan-ip": "show gpon remote-onu wan-ip gpon-onu_1/{slot}/{port}:{onu}",
     "detail-info": "terminal length 130\n\n\nshow gpon onu detail-info gpon-onu_1/{slot}/{port}:{onu}"
-  }
+  },
+  "users": [
+    {
+      "id": "1",
+      "username": "admin",
+      "name": "Administrator",
+      "password": "admin",
+      "role": "admin",
+      "createdAt": "2026-09-30T00:00:00.000Z"
+    }
+  ]
 }
