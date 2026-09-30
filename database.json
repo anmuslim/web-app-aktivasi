@@ -1,0 +1,381 @@
+{
+  "oltConfigs": {
+    "A1-NGAMPEL-DYG": {
+      "code": "A1-NGPL-DYG - 10.123.123.15",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D1A": {
+          "vlan": 1010,
+          "ppp_prefix": "A1X1A",
+          "ip_olt": "10.123.123.15",
+          "vlanProfile": "PPPoE1010",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D1C": {
+          "vlan": 1012,
+          "ppp_prefix": "A1X1C",
+          "ip_olt": "10.123.123.15",
+          "vlanProfile": "PPPoE1012",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "A2-NGAMPEL-PNKL": {
+      "code": "A2-NGPL-PNKL - 10.123.123.16",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "A3-NGAMPEL-KTN": {
+      "code": "A3-NGPL-KTN - 10.123.123.155",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D1E": {
+          "vlan": 1014,
+          "ppp_prefix": "A3X1E",
+          "ip_olt": "10.123.123.155",
+          "vlanProfile": "PPPoE1014",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "B1-SUMBEREJO-SBR": {
+      "code": "B1-SBR-SBR - 10.123.123.35",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D3A": {
+          "vlan": 1032,
+          "ppp_prefix": "B1X3A",
+          "ip_olt": "10.123.123.35",
+          "vlanProfile": "PPPoE1032",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D3B": {
+          "vlan": 1031,
+          "ppp_prefix": "B1X3B",
+          "ip_olt": "10.123.123.35",
+          "vlanProfile": "PPPoE1031",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D3C": {
+          "vlan": 1030,
+          "ppp_prefix": "B1X3C",
+          "ip_olt": "10.123.123.35",
+          "vlanProfile": "PPPoE1030",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D3D": {
+          "vlan": 1033,
+          "ppp_prefix": "B1X3D",
+          "ip_olt": "10.123.123.35",
+          "vlanProfile": "PPPoE1033",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "C1-JETIS-JTS": {
+      "code": "C1-JTS-JTS - 10.123.123.45",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D4A": {
+          "vlan": 1042,
+          "ppp_prefix": "C1X4A",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "PPPoE1042",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D4B": {
+          "vlan": 1041,
+          "ppp_prefix": "C1X4B",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "PPPoE1041",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D4C": {
+          "vlan": 1040,
+          "ppp_prefix": "C1X4C",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "PPPoE1040",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D4D": {
+          "vlan": 1043,
+          "ppp_prefix": "C1X4D",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "PPPoE1043",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "D1-SIMAN-PBSN": {
+      "code": "D1-SMN-PBSN - 10.10.55.2",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D6A": {
+          "vlan": 1060,
+          "ppp_prefix": "D1X6A",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "PPPoE1060",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D6B": {
+          "vlan": 1061,
+          "ppp_prefix": "D1X6B",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "PPPoE1061",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "E1-SLAHUNG-SLH": {
+      "code": "E1-SLH-SLH - 10.123.123.75",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D7A": {
+          "vlan": 1070,
+          "ppp_prefix": "E1X7A",
+          "ip_olt": "10.123.123.75",
+          "vlanProfile": "PPPoE1070",
+          "speedProfile": "",
+          "template": "STANDAR"
+        },
+        "D7B": {
+          "vlan": 1071,
+          "ppp_prefix": "E1X7B",
+          "ip_olt": "10.123.123.75",
+          "vlanProfile": "PPPoE1071",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "F1-TEMON-SNRG": {
+      "code": "F1-TMN-SNRG - 10.123.123.55",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "F2-TEMON-SNRG": {
+      "code": "F2-TMN-SNRG - 10.123.123.56",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "G1-SAMBIT-BDG": {
+      "code": "G1-SMBT-BDG - 10.10.99.3",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "H1-PACITAN-PLS": {
+      "code": "H1-PCT-PLS - 10.10.88.2",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "H2-PACITAN-GMH": {
+      "code": "H2-PCT-GMH - 10.10.111.2",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D8B": {
+          "vlan": 1100,
+          "ppp_prefix": "H2X8B",
+          "ip_olt": "10.10.111.2",
+          "vlanProfile": "PPPoE1100",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "H3-PACITAN-PCO": {
+      "code": "H3-PCT-PCO - 10.10.112.2",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "H4-PACITAN-TGO": {
+      "code": "H4-PCT-TGO - 10.10.114.2",
+      "username": "",
+      "password": "",
+      "subtabs": {}
+    },
+    "I1-CARUBAN-PLKC": {
+      "code": "I1-CRB-PLKC - 10.123.123.135",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "D13A": {
+          "vlan": 1130,
+          "ppp_prefix": "I1X13A",
+          "ip_olt": "10.123.123.135",
+          "vlanProfile": "vlan1130",
+          "speedProfile": "",
+          "template": "STANDAR"
+        }
+      }
+    },
+    "SANDYA-SMN": {
+      "code": "SANDYA-SMN - 10.10.55.2",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "VLAN-168": {
+          "vlan": 168,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-170": {
+          "vlan": 170,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-803": {
+          "vlan": 803,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        }
+      }
+    },
+    "SANDYA-KTN": {
+      "code": "SANDYA-KTN - 10.123.123.155",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "VLAN-168": {
+          "vlan": 168,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.155",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-170": {
+          "vlan": 170,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.155",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-803": {
+          "vlan": 803,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.155",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        }
+      }
+    },
+    "SANDYA-JTS": {
+      "code": "SANDYA-JTS - 10.123.123.45",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "VLAN-168": {
+          "vlan": 168,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-170": {
+          "vlan": 170,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        },
+        "VLAN-803": {
+          "vlan": 803,
+          "ppp_prefix": "J1X",
+          "ip_olt": "10.123.123.45",
+          "vlanProfile": "",
+          "speedProfile": "",
+          "template": "SANDYA"
+        }
+      }
+    },
+    "MAZZNET-SMN": {
+      "code": "MAZZNET-SMN - 10.10.55.2",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "VLAN-696": {
+          "vlan": 696,
+          "ppp_prefix": "",
+          "ip_olt": "10.10.55.2",
+          "vlanProfile": "696-OPENPORTMAZZNET",
+          "speedProfile": "",
+          "template": "MAZZNET"
+        }
+      }
+    },
+    "MAZZNET-KTN": {
+      "code": "MAZZNET-KTN - 10.123.123.155",
+      "username": "wholtgnrt",
+      "password": "whusnet#123",
+      "subtabs": {
+        "VLAN-696": {
+          "vlan": 696,
+          "ppp_prefix": "",
+          "ip_olt": "10.123.123.155",
+          "vlanProfile": "696-OPENPORTMAZZNET",
+          "speedProfile": "",
+          "template": "MAZZNET"
+        }
+      }
+    }
+  },
+  "templates": {
+    "STANDAR": "interface gpon-olt_1/{slot}/{port}\nonu {onu} type ALL sn {sn}\nexit\n\ninterface gpon-onu_1/{slot}/{port}:{onu}\nname {odp}_{pppoe}\ntcont 1 name INET profile {profile}\ngemport 1 name INET tcont 1\ngemport 1 traffic-limit upstream {profile} downstream {profile}\nservice-port 1 vport 1 user-vlan {vlan} vlan {vlan}\nexit\n\npon-onu-mng gpon-onu_1/{slot}/{port}:{onu}\nservice INET gemport 1 vlan {vlan}\n{locks}\n\nfirewall enable level low\nsecurity-mgmt 1 state enable mode forward ingress-type wan protocol web\nwan-ip mode pppoe username {pppoe} password 740874 vlan-profile {vlanProfile} host 1\nwan 1 service internet host 1\nexit\nend\nwr\n",
+    "SANDYA": "interface gpon-olt_1/{slot}/{port}\nonu {onu} type ALL sn {sn}\n!\ninterface gpon-onu_1/{slot}/{port}:{onu}\n  name {odp}_{pppoe}\n  description {pppoe}\n  tcont 1 name LLSANDYA profile {profile}\n  gemport 1 name LLSANDYA  tcont 1\n  gemport 1 traffic-limit upstream {profile} downstream {profile}\n  service-port 1 vport 1 user-vlan {vlan} vlan {vlan}\n!\npon-onu-mng gpon-onu_1/{slot}/{port}:{onu}\n  service LLSANDYA gemport 1 vlan {vlan}\n  firewall enable level low anti-hack disable\n  security-mgmt 1 state enable mode forward protocol web \n  wan 1 service internet host 1\n!\nend\nwr\n",
+    "MAZZNET": "interface gpon-olt_1/{slot}/{port}\nonu {onu} type ALL sn {sn}\n!\ninterface gpon-onu_1/{slot}/{port}:{onu}\nname {odp}_{pppoe}\ndescription {pppoe}\ntcont 1 name LLMAZZNET profile {profile}\ngemport 1 name LLMAZZNET tcont 1\ngemport 1 traffic-limit upstream {profile} downstream {profile}\nservice-port 1 vport 1 user-vlan {vlan} vlan {vlan}\n!\npon-onu-mng gpon-onu_1/{slot}/{port}:{onu}\nservice LLMAZZNET gemport 1 vlan {vlan}\n{locks}\nwan-ip 1 mode pppoe username {pppoe} password 14045 vlan-profile 696-OPENPORTMAZZNET host 1\nfirewall enable level low anti-hack disable\nsecurity-mgmt 1 state enable mode forward protocol web \nwan 1 service internet host 1\n\n!\nend\nwr\n"
+  },
+  "terminalShortcuts": {
+    "onu uncfg": "show gpon onu uncfg",
+    "onu kosong": "terminal length 140\n\n\nshow gpon onu state gpon-olt_1/{slot}/{port}",
+    "conf t": "conf t",
+    "end": "end",
+    "dbm onu": "show pon power onu-rx gpon-onu_1/{slot}/{port}:{onu}",
+    "dbm 1 port": "terminal length 130\n\n\nshow pon power onu-rx gpon-olt_1/{slot}/{port}",
+    "exit & save": "end\n\n\nwr",
+    "cur-con onu": "show running-config interface gpon-onu_1/{slot}/{port}:{onu}\n\n\nshow onu running config gpon-onu_1/{slot}/{port}:{onu}",
+    "on-off eth": "pon-onu-mng gpon-onu_1/{slot}/{port}:{onu}\n\n\n{locks}",
+    "ganti modem": "interface gpon-onu_1/{slot}/{port}:{onu}\n\n\nregistration-method sn {sn}",
+    "cek onu by SN": "show gpon onu by sn {sn}",
+    "status wan-ip": "show gpon remote-onu wan-ip gpon-onu_1/{slot}/{port}:{onu}",
+    "detail-info": "terminal length 130\n\n\nshow gpon onu detail-info gpon-onu_1/{slot}/{port}:{onu}"
+  }
+}
