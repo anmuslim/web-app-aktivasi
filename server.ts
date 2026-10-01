@@ -67,9 +67,9 @@ try {
 // MySQL Configuration
 const dbConfig = {
   host: process.env.MYSQL_HOST || 'localhost',
-  user: process.env.MYSQL_USER || 'whusnet_olt_pro',
+  user: process.env.MYSQL_USER || 'whusnet_web_aktivasi',
   password: process.env.MYSQL_PASSWORD || 'Strategi*1',
-  database: process.env.MYSQL_DATABASE || 'whusnet_olt',
+  database: process.env.MYSQL_DATABASE || 'web_aktivasi',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -80,10 +80,23 @@ let mysqlAvailable = false;
 
 async function initDb() {
   try {
+    // Pastikan database ada terlebih dahulu jika memungkinkan
+    try {
+      const rootConn = await mysql.createConnection({
+        host: dbConfig.host,
+        user: dbConfig.user,
+        password: dbConfig.password
+      });
+      await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+      await rootConn.end();
+    } catch {
+      // Abaikan jika user hanya memiliki hak akses langsung ke database
+    }
+
     pool = mysql.createPool(dbConfig);
     const connection = await pool.getConnection();
     mysqlAvailable = true;
-    console.log('✅ MySQL Database Terhubung!');
+    console.log(`✅ MySQL Database '${dbConfig.database}' Terhubung!`);
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS olt_configs (

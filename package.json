@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && tsx scripts/init-db.ts",
+    "db:init": "tsx scripts/init-db.ts",
     "preview": "vite preview",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit"
