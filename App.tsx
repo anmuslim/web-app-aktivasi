@@ -2,6 +2,34 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
+  Terminal,
+  Server,
+  FolderTree,
+  FileCode2,
+  Command,
+  Gauge,
+  Users,
+  Sun,
+  Moon,
+  LogOut,
+  ChevronLeft,
+  Menu,
+  PlugZap,
+  Unplug,
+  Copy,
+  Check,
+  ExternalLink,
+  Settings2,
+  Trash2,
+  KeyRound,
+  Activity,
+  SlidersHorizontal,
+  Lock,
+  Unlock,
+  Radio,
+  RotateCw
+} from 'lucide-react';
+import {
   INITIAL_OLT_CONFIG,
   INITIAL_TEMPLATES,
   INITIAL_SHORTCUTS,
@@ -539,17 +567,11 @@ const App: React.FC = () => {
           selectionBackground: 'rgba(16, 185, 129, 0.3)'
         },
         convertEol: true, 
-        rows: 35,
+        rows: 45,
         cols: 100
       });
       term.open(terminalContainerRef.current);
       xtermRef.current = term;
-
-      term.writeln('\x1b[1;36m============================================================\x1b[0m');
-      term.writeln('\x1b[1;32m  Whusnet OLT Pro - CLI Interactive Terminal\x1b[0m');
-      term.writeln('\x1b[1;36m============================================================\x1b[0m');
-      term.writeln('\x1b[90mPilih OLT di panel kiri, pilih protokol (Telnet/SSH) atau Mode Simulasi,\x1b[0m');
-      term.writeln('\x1b[90mlalu klik tombol [Connect] untuk memulai.\x1b[0m\r\n');
 
       term.onData((data: string) => {
         resetIdleTimer();
@@ -582,6 +604,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (xtermRef.current) {
       xtermRef.current.options.fontSize = terminalFontSize;
+      try {
+        xtermRef.current.resize(xtermRef.current.cols || 100, 45);
+      } catch {}
     }
   }, [terminalFontSize]);
 
@@ -1103,14 +1128,14 @@ const App: React.FC = () => {
 
   const paramList = ['slot', 'port', 'onu', 'sn', 'odp', 'pppoe', 'profile', 'vlan', 'vlanProfile', 'locks'];
 
-  const navItems: { id: NavMenu; label: string; icon: string; count?: number; desc: string }[] = useMemo(() => [
-    { id: 'generator', label: 'Generator & Terminal', icon: '⚡', desc: 'Aktivasi OLT & CLI' },
-    { id: 'olt', label: 'Manajemen OLT', icon: '🌐', count: Object.keys(oltConfigs).length, desc: 'Daftar IP & Akun OLT' },
-    { id: 'area', label: 'Area & VLAN', icon: '🗺️', count: Object.values(oltConfigs).reduce((acc: number, o: any) => acc + Object.keys(o?.subtabs || {}).length, 0), desc: 'Sub-area & VLAN Profile' },
-    { id: 'template', label: 'Template Script', icon: '📝', count: Object.keys(templates).length, desc: 'Script Designer GPON' },
-    { id: 'shortcut', label: 'Shortcut Terminal', icon: '⌨️', count: Object.keys(terminalShortcuts).length, desc: 'Perintah CLI Cepat' },
-    { id: 'speed', label: 'Profile / Speed', icon: '🚀', count: speedProfiles.length, desc: 'Bandwidth & Kecepatan' },
-    { id: 'user', label: 'Manajemen User', icon: '👥', count: users.length, desc: 'Akses & Akun Petugas' },
+  const navItems: { id: NavMenu; label: string; icon: React.ReactNode; count?: number; desc: string }[] = useMemo(() => [
+    { id: 'generator', label: 'Generator & Terminal', icon: <Terminal className="w-4 h-4" />, desc: 'Aktivasi OLT & CLI' },
+    { id: 'olt', label: 'Manajemen OLT', icon: <Server className="w-4 h-4" />, count: Object.keys(oltConfigs).length, desc: 'Daftar IP & Akun OLT' },
+    { id: 'area', label: 'Area & VLAN', icon: <FolderTree className="w-4 h-4" />, count: Object.values(oltConfigs).reduce((acc: number, o: any) => acc + Object.keys(o?.subtabs || {}).length, 0), desc: 'Sub-area & VLAN Profile' },
+    { id: 'template', label: 'Template Script', icon: <FileCode2 className="w-4 h-4" />, count: Object.keys(templates).length, desc: 'Script Designer GPON' },
+    { id: 'shortcut', label: 'Shortcut Terminal', icon: <Command className="w-4 h-4" />, count: Object.keys(terminalShortcuts).length, desc: 'Perintah CLI Cepat' },
+    { id: 'speed', label: 'Profile / Speed', icon: <Gauge className="w-4 h-4" />, count: speedProfiles.length, desc: 'Bandwidth & Kecepatan' },
+    { id: 'user', label: 'Manajemen User', icon: <Users className="w-4 h-4" />, count: users.length, desc: 'Akses & Akun Petugas' },
   ], [oltConfigs, templates, terminalShortcuts, speedProfiles, users]);
 
   const currentNavTitle = useMemo(() => {
@@ -1237,11 +1262,12 @@ const App: React.FC = () => {
             <button
               type="button"
               onClick={() => { setLoginUsername('admin'); setLoginPassword('admin'); }}
-              className={`text-[11px] underline underline-offset-4 transition-colors ${
+              className={`text-[11px] underline underline-offset-4 transition-colors flex items-center justify-center gap-1.5 mx-auto ${
                 theme === 'dark' ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-700 hover:text-cyan-800'
               }`}
             >
-              🔑 Klik untuk isi Akun Bawaan: <span className="font-mono font-bold">admin / admin</span>
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Klik untuk isi Akun Bawaan: <span className="font-mono font-bold">admin / admin</span></span>
             </button>
             <div className="mt-3 text-[10px] text-slate-500 font-mono flex items-center justify-center gap-2">
               <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`}></span>
@@ -1272,12 +1298,12 @@ const App: React.FC = () => {
       >
         {theme === 'dark' ? (
           <>
-            <span className="text-sm">☀️</span>
+            <Sun className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[11px] font-mono tracking-wide uppercase">Terang</span>
           </>
         ) : (
           <>
-            <span className="text-sm">🌙</span>
+            <Moon className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-[11px] font-mono tracking-wide uppercase">Gelap</span>
           </>
         )}
@@ -1306,8 +1332,8 @@ const App: React.FC = () => {
           isSidebarCollapsed ? 'justify-between md:justify-center md:flex-col md:gap-3' : 'justify-between'
         } ${theme === 'dark' ? 'border-slate-800/60' : 'border-slate-200'}`}>
           <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'md:justify-center' : ''}`}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-mono font-black text-xl shadow-lg shadow-cyan-500/20 shrink-0">
-              W
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20 shrink-0">
+              <Server className="w-5 h-5 text-white" />
             </div>
             {!isSidebarCollapsed && (
               <div className="overflow-hidden">
@@ -1333,9 +1359,7 @@ const App: React.FC = () => {
               }`}
               title={isSidebarCollapsed ? "Perluas Sidebar" : "Minimize Sidebar"}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform duration-200 ${isSidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
+              <ChevronLeft className={`h-4 w-4 transition-transform duration-200 ${isSidebarCollapsed ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Close button on mobile */}
@@ -1372,7 +1396,11 @@ const App: React.FC = () => {
               }`}
             >
               <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-                <span className="text-xl">⚡</span>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  activeNav === 'generator' ? 'bg-white/20 text-white shadow-sm' : 'bg-cyan-500/10 text-cyan-400'
+                }`}>
+                  <Terminal className="w-4 h-4" />
+                </div>
                 {!isSidebarCollapsed && (
                   <div>
                     <div className="text-xs font-bold leading-none">Generator & Terminal</div>
@@ -1408,7 +1436,7 @@ const App: React.FC = () => {
                     key={item.id}
                     onClick={() => { setActiveNav(item.id); setIsMobileNavOpen(false); }}
                     title={`${item.label} (${item.desc})`}
-                    className={`w-full flex items-center rounded-xl transition-all relative ${
+                    className={`w-full flex items-center rounded-xl transition-all relative group ${
                       isSidebarCollapsed ? 'justify-center p-3' : 'justify-between p-2.5 text-left'
                     } ${
                       isActive
@@ -1419,7 +1447,11 @@ const App: React.FC = () => {
                     }`}
                   >
                     <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-                      <span className="text-xl">{item.icon}</span>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                        isActive ? 'bg-white/20 text-white shadow-sm' : 'bg-slate-800/80 text-cyan-400 group-hover:bg-slate-700/80 group-hover:text-cyan-300'
+                      }`}>
+                        {item.icon}
+                      </div>
                       {!isSidebarCollapsed && (
                         <div>
                           <div className="text-xs font-bold leading-none">{item.label}</div>
@@ -1465,9 +1497,10 @@ const App: React.FC = () => {
               <button
                 onClick={handleLogout}
                 title="Keluar dari akun"
-                className="text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-500/10 text-xs font-bold transition-all"
+                className="text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-500/10 text-xs font-bold transition-all flex items-center gap-1.5"
               >
-                Keluar
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Keluar</span>
               </button>
             </div>
           ) : (
@@ -1481,9 +1514,9 @@ const App: React.FC = () => {
               <button
                 onClick={handleLogout}
                 title="Keluar dari akun"
-                className="p-1.5 rounded-lg text-rose-400 hover:text-white hover:bg-rose-600 transition-all text-sm"
+                className="p-2 rounded-lg text-rose-400 hover:text-white hover:bg-rose-600 transition-all"
               >
-                🚪
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -1505,9 +1538,7 @@ const App: React.FC = () => {
               className="md:hidden p-2 rounded-xl border bg-slate-800/60 border-slate-700 text-slate-200 hover:bg-slate-800"
               title="Buka Menu"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              <Menu className="h-5 w-5" />
             </button>
 
             {/* Desktop Sidebar Minimize / Expand Toggle Button in Header */}
@@ -1520,9 +1551,7 @@ const App: React.FC = () => {
               }`}
               title={isSidebarCollapsed ? "Perluas Sidebar" : "Minimize Sidebar"}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform duration-200 ${isSidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
+              <ChevronLeft className={`h-4 w-4 transition-transform duration-200 ${isSidebarCollapsed ? 'rotate-180' : ''}`} />
               <span className="text-[11px] font-mono tracking-wide uppercase">
                 {isSidebarCollapsed ? 'Expand' : 'Minimize'}
               </span>
@@ -1545,7 +1574,7 @@ const App: React.FC = () => {
                 onClick={() => setActiveNav('generator')}
                 className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
               >
-                <span>⚡</span>
+                <Terminal className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Generator Script</span>
               </button>
             )}
@@ -1570,8 +1599,9 @@ const App: React.FC = () => {
                   theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-slate-200/50'
                 }`}>
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className={`text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Pilih Node OLT
+                    <h3 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <Server className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Pilih Node OLT</span>
                     </h3>
                     <div className="flex items-center gap-2">
                       <button
@@ -1620,8 +1650,9 @@ const App: React.FC = () => {
                   {selectedOLT && oltConfigs[selectedOLT] && (
                     <div className={`pt-6 mt-6 border-t animate-in slide-in-from-top-2 duration-300 ${theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}`}>
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className={`text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Pilih Area & VLAN
+                        <h3 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <FolderTree className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Pilih Area & VLAN</span>
                         </h3>
                         <div className="flex items-center gap-2">
                           <button
@@ -1855,19 +1886,23 @@ const App: React.FC = () => {
                   </div>
 
                   <div className={`space-y-1 pt-2 border-t ${theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200'}`}>
-                    <label className="text-[10px] text-slate-500 font-bold uppercase">Eth Port Lock (ONU)</label>
+                    <label className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1.5">
+                      <Lock className="w-3 h-3 text-cyan-400" />
+                      <span>Eth Port Lock (ONU)</span>
+                    </label>
                     <div className="grid grid-cols-4 gap-2">
                       {[1, 2, 3, 4].map(n => (
                         <button
                           key={n}
                           onClick={() => setLocks(prev => ({ ...prev, [n]: !prev[n] }))}
-                          className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                          className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center justify-center gap-1 ${
                             locks[n]
                               ? 'bg-rose-500/20 border-rose-500 text-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                               : 'bg-emerald-500/20 border-emerald-500 text-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                           }`}
                         >
-                          {locks[n] ? `Eth${n} LOCK` : `Eth${n} OPEN`}
+                          {locks[n] ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                          <span>{locks[n] ? `Eth${n} LOCK` : `Eth${n} OPEN`}</span>
                         </button>
                       ))}
                     </div>
@@ -1876,30 +1911,32 @@ const App: React.FC = () => {
               </div>
 
               {/* Right Column: Script Preview & Live Terminal */}
-              <div className="lg:col-span-7 flex flex-col h-[750px] lg:h-[820px] overflow-hidden">
+              <div className="lg:col-span-7 flex flex-col min-h-[920px] lg:min-h-[980px]">
                 <section className={`border rounded-3xl flex flex-col h-full overflow-hidden shadow-2xl relative transition-colors ${
                   theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                 }`}>
                   <div className={`flex border-b shrink-0 ${theme === 'dark' ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-100/70 border-slate-200'}`}>
                     <button
                       onClick={() => setActiveRightTab('script')}
-                      className={`flex-1 py-3.5 text-xs font-bold uppercase transition-all ${
+                      className={`flex-1 py-3.5 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 ${
                         activeRightTab === 'script'
                           ? 'text-cyan-500 border-b-2 border-cyan-500 bg-cyan-500/10'
                           : 'text-slate-500 hover:text-slate-700'
                       }`}
                     >
-                      Script Preview
+                      <FileCode2 className="w-3.5 h-3.5" />
+                      <span>Script Preview</span>
                     </button>
                     <button
                       onClick={() => setActiveRightTab('telnet')}
-                      className={`flex-1 py-3.5 text-xs font-bold uppercase transition-all ${
+                      className={`flex-1 py-3.5 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 ${
                         activeRightTab === 'telnet'
                           ? 'text-emerald-500 border-b-2 border-emerald-500 bg-emerald-500/10'
                           : 'text-slate-500 hover:text-slate-700'
                       }`}
                     >
-                      Live Terminal
+                      <Terminal className="w-3.5 h-3.5" />
+                      <span>Live Terminal</span>
                     </button>
                   </div>
 
@@ -1908,27 +1945,30 @@ const App: React.FC = () => {
                     theme === 'dark' ? 'bg-[#0a0f1e]' : 'bg-slate-50'
                   }`}>
                     <div className="flex justify-between items-center mb-4">
-                      <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider flex items-center gap-1.5">
+                        <FileCode2 className="w-3 h-3 text-cyan-400" />
                         Script Output GPON
                       </span>
                       <div className="flex gap-2">
                         <button
                           onClick={openWebOLT}
-                          className={`px-4 py-2 border rounded-xl text-[10px] font-bold transition-all uppercase ${
+                          className={`px-4 py-2 border rounded-xl text-[10px] font-bold transition-all uppercase flex items-center gap-1.5 ${
                             theme === 'dark'
                               ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
                               : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
                           }`}
                         >
-                          Web OLT
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Web OLT</span>
                         </button>
                         <button
                           onClick={() => copyToClipboard(generatedScript)}
-                          className={`px-4 md:px-6 py-2 rounded-xl text-[10px] font-bold text-white transition-all ${
+                          className={`px-4 md:px-6 py-2 rounded-xl text-[10px] font-bold text-white transition-all flex items-center gap-1.5 ${
                             copySuccess ? 'bg-emerald-600 shadow-lg shadow-emerald-500/30' : 'bg-cyan-600 shadow-lg shadow-cyan-500/30'
                           }`}
                         >
-                          {copySuccess ? 'BERHASIL DISALIN!' : 'SALIN SCRIPT'}
+                          {copySuccess ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copySuccess ? 'BERHASIL DISALIN!' : 'SALIN SCRIPT'}</span>
                         </button>
                       </div>
                     </div>
@@ -1978,14 +2018,15 @@ const App: React.FC = () => {
                               if (isTelnetConnected) disconnectTerminal();
                               setTerminalMode('real');
                             }}
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all flex items-center gap-1 ${
                               terminalMode === 'real'
                                 ? 'bg-cyan-600 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-white'
                             }`}
                             title="Hubungkan langsung ke IP OLT di jaringan lokal/VPN"
                           >
-                            Real OLT
+                            <Server className="w-2.5 h-2.5" />
+                            <span>Real OLT</span>
                           </button>
                           <button
                             type="button"
@@ -1993,14 +2034,15 @@ const App: React.FC = () => {
                               if (isTelnetConnected) disconnectTerminal();
                               setTerminalMode('simulation');
                             }}
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all flex items-center gap-1 ${
                               terminalMode === 'simulation'
                                 ? 'bg-purple-600 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-white'
                             }`}
                             title="Mode demo/uji coba template tanpa perlu terhubung ke OLT fisik"
                           >
-                            Simulasi
+                            <Terminal className="w-2.5 h-2.5" />
+                            <span>Simulasi</span>
                           </button>
                         </div>
 
@@ -2015,7 +2057,8 @@ const App: React.FC = () => {
                           }`}
                           title="Pengaturan Port & Kredensial Terminal"
                         >
-                          <span>⚙️</span> Opsi
+                          <Settings2 className="w-3 h-3" />
+                          <span>Opsi</span>
                         </button>
 
                         {/* Ping / Cek OLT */}
@@ -2027,7 +2070,8 @@ const App: React.FC = () => {
                             className="px-2 py-1 bg-slate-800 border border-slate-700 text-cyan-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1"
                             title="Cek apakah IP OLT dapat dijangkau dari server"
                           >
-                            <span>📶</span> {isTestingPing ? 'Cek...' : 'Ping'}
+                            <Radio className="w-3 h-3" />
+                            <span>{isTestingPing ? 'Cek...' : 'Ping'}</span>
                           </button>
                         )}
 
@@ -2035,10 +2079,11 @@ const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={clearTerminal}
-                          className="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 hover:text-white"
+                          className="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 hover:text-white flex items-center gap-1"
                           title="Bersihkan layar terminal"
                         >
-                          Clear
+                          <Trash2 className="w-3 h-3" />
+                          <span>Clear</span>
                         </button>
 
                         {/* Auto Login */}
@@ -2047,9 +2092,10 @@ const App: React.FC = () => {
                           onClick={loginOLTAuto}
                           disabled={!isTelnetConnected}
                           title="Kirim username & password otomatis ke OLT"
-                          className="px-2.5 py-1 bg-slate-800 border border-slate-700 text-amber-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-30"
+                          className="px-2.5 py-1 bg-slate-800 border border-slate-700 text-amber-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-30 flex items-center gap-1"
                         >
-                          Login
+                          <KeyRound className="w-3 h-3" />
+                          <span>Login</span>
                         </button>
 
                         {/* Connect / Disconnect Buttons */}
@@ -2060,23 +2106,26 @@ const App: React.FC = () => {
                             disabled={isTelnetConnecting}
                             className="px-3.5 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase disabled:opacity-50 hover:bg-emerald-500 transition-all shadow-md shadow-emerald-600/30 flex items-center gap-1"
                           >
-                            <span>⚡</span> {isTelnetConnecting ? 'Connecting...' : 'Connect'}
+                            <PlugZap className="w-3 h-3" />
+                            <span>{isTelnetConnecting ? 'Connecting...' : 'Connect'}</span>
                           </button>
                         ) : (
                           <div className="flex gap-1.5">
                             <button
                               type="button"
                               onClick={disconnectTerminal}
-                              className="px-3 py-1 bg-rose-600 text-white rounded text-[9px] font-bold uppercase hover:bg-rose-500 transition-all"
+                              className="px-3 py-1 bg-rose-600 text-white rounded text-[9px] font-bold uppercase hover:bg-rose-500 transition-all flex items-center gap-1"
                             >
-                              DISCONNECT
+                              <Unplug className="w-3 h-3" />
+                              <span>DISCONNECT</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setShowPasteConfirm(true)}
-                              className="px-3 py-1 bg-cyan-600 text-white rounded text-[9px] font-bold uppercase hover:bg-cyan-500 transition-all shadow-md shadow-cyan-600/30"
+                              className="px-3 py-1 bg-cyan-600 text-white rounded text-[9px] font-bold uppercase hover:bg-cyan-500 transition-all shadow-md shadow-cyan-600/30 flex items-center gap-1"
                             >
-                              PASTE SCRIPT
+                              <FileCode2 className="w-3 h-3" />
+                              <span>PASTE SCRIPT</span>
                             </button>
                           </div>
                         )}
@@ -2171,24 +2220,32 @@ const App: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Scrollable area grouping terminal lines and shortcuts bar together */}
-                    <div className="flex-1 overflow-auto custom-scrollbar bg-black relative flex flex-col justify-between">
-                      {/* The terminal wrapper */}
-                      <div ref={terminalContainerRef} className="w-full shrink-0 flex-1" />
+                    {/* Terminal Display and Controls Container */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#050505] flex flex-col">
+                      {/* The terminal wrapper - guaranteed minimum 45 rows layout, never covered */}
+                      <div
+                        ref={terminalContainerRef}
+                        className="w-full shrink-0 min-h-[730px] p-2 bg-[#050505]"
+                        style={{ minHeight: '730px' }}
+                      />
 
-                      {/* QUICK COMMANDS UNDER TERMINAL */}
-                      <div className="bg-[#0b101a] border-t border-slate-800/80 shrink-0 flex flex-col z-10 sticky bottom-0">
-                        <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-[#0b101a] border-b border-slate-800/50 gap-2">
+                      {/* QUICK COMMANDS UNDER TERMINAL (PLACED STRICTLY BELOW TERMINAL - NEVER COVERS TERMINAL) */}
+                      <div className="bg-[#0b101a] border-t border-slate-800 shrink-0 flex flex-col mt-auto">
+                        <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-[#0d1424] border-b border-slate-800/80 gap-2">
                           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase mr-1 shrink-0 flex items-center gap-1.5">
+                              <Command className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Shortcut:</span>
+                            </span>
                             {shortcutCategories.map(cat => (
                               <button
                                 key={cat}
                                 type="button"
                                 onClick={() => setActiveShortcutCategoryTab(cat)}
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
+                                className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
                                   activeShortcutCategoryTab === cat
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)]'
-                                    : 'text-slate-400 hover:text-slate-200 border border-transparent hover:bg-slate-800/50'
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
+                                    : 'text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800/60'
                                 }`}
                               >
                                 {cat}
@@ -2198,51 +2255,93 @@ const App: React.FC = () => {
                           <div className="flex items-center gap-2 shrink-0">
                             <button
                               onClick={() => setActiveNav('shortcut')}
-                              className="text-[8px] text-cyan-400 hover:underline uppercase font-bold"
+                              className="text-[9px] text-cyan-400 hover:underline uppercase font-bold"
                             >
-                              + Edit Shortcut
+                              + Kelola
                             </button>
-                            {Object.keys(terminalShortcuts).length > 6 && (
+                            {Object.keys(terminalShortcuts).length > 0 && (
                               <button
                                 onClick={() => setIsShortcutsExpanded(!isShortcutsExpanded)}
-                                className="text-[8px] font-bold text-emerald-400 uppercase px-2 hover:bg-emerald-500/10 rounded transition-all"
+                                className={`text-[9px] font-bold uppercase px-2.5 py-1 rounded border transition-all flex items-center gap-1.5 ${
+                                  isShortcutsExpanded
+                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                }`}
+                                title={isShortcutsExpanded ? "Kecilkan daftar shortcut" : "Buka seluruh shortcut di bawah terminal"}
                               >
-                                {isShortcutsExpanded ? 'Show Less' : 'View All'}
+                                <span>{isShortcutsExpanded ? '🔽 Sembunyikan' : '🔼 View All Shortcut'}</span>
                               </button>
                             )}
                           </div>
                         </div>
 
-                        <div className={`overflow-y-auto p-2.5 custom-scrollbar flex flex-wrap gap-1.5 content-start transition-all duration-150 bg-[#080d16] ${isShortcutsExpanded ? 'h-48' : 'h-16'}`}>
-                          {(() => {
-                            const filtered = Object.entries(terminalShortcuts).filter(([_, s]) => {
-                              const cat = typeof s === 'object' && s !== null ? (s as any).category : 'ZTE C320';
-                              return cat === activeShortcutCategoryTab;
-                            });
+                        {/* Mode Normal: Baris horizontal kompak */}
+                        {!isShortcutsExpanded ? (
+                          <div className="overflow-x-auto p-2 scrollbar-none flex items-center gap-1.5 bg-[#080d16]">
+                            {(() => {
+                              const filtered = Object.entries(terminalShortcuts).filter(([_, s]) => {
+                                const cat = typeof s === 'object' && s !== null ? (s as any).category : 'ZTE C320';
+                                return cat === activeShortcutCategoryTab;
+                              });
 
-                            if (filtered.length === 0) {
-                              return <span className="text-[11px] text-slate-500 italic px-2 py-1">Belum ada perintah dalam kategori ini.</span>;
-                            }
+                              if (filtered.length === 0) {
+                                return <span className="text-[11px] text-slate-500 italic px-2 py-0.5">Belum ada perintah dalam kategori ini.</span>;
+                              }
 
-                            return filtered.map(([name, s]) => {
-                              const script = typeof s === 'object' && s !== null ? (s as any).body : s;
-                              return (
-                                <button
-                                  key={name}
-                                  onClick={() => isTelnetConnected && sendCommandToTerminal(script)}
-                                  disabled={!isTelnetConnected}
-                                  className={`px-2 py-1 bg-slate-800/70 border border-slate-700/60 rounded-md text-[11px] font-sans font-bold uppercase transition-all ${
-                                    isTelnetConnected
-                                      ? 'text-slate-200 hover:text-emerald-400 hover:border-emerald-500 hover:bg-slate-800'
-                                      : 'text-slate-600 opacity-40 cursor-not-allowed'
-                                  }`}
-                                >
-                                  {name}
-                                </button>
-                              );
-                            });
-                          })()}
-                        </div>
+                              return filtered.map(([name, s]) => {
+                                const script = typeof s === 'object' && s !== null ? (s as any).body : s;
+                                return (
+                                  <button
+                                    key={name}
+                                    onClick={() => isTelnetConnected && sendCommandToTerminal(script)}
+                                    disabled={!isTelnetConnected}
+                                    title={script}
+                                    className={`px-2.5 py-1 bg-slate-800/80 border border-slate-700/70 rounded-md text-[11px] font-sans font-bold uppercase transition-all whitespace-nowrap shrink-0 ${
+                                      isTelnetConnected
+                                        ? 'text-slate-200 hover:text-emerald-400 hover:border-emerald-500 hover:bg-slate-800 shadow-sm cursor-pointer'
+                                        : 'text-slate-600 opacity-40 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {name}
+                                  </button>
+                                );
+                              });
+                            })()}
+                          </div>
+                        ) : (
+                          /* Mode Extend: Tetap tombol-tombol kecil (tanpa detail) yang membungkus banyak baris di bawah terminal */
+                          <div className="p-2.5 bg-[#080d16] border-t border-slate-800/80 max-h-48 overflow-y-auto custom-scrollbar flex flex-wrap gap-1.5 content-start animate-in fade-in duration-150">
+                            {(() => {
+                              const filtered = Object.entries(terminalShortcuts).filter(([_, s]) => {
+                                const cat = typeof s === 'object' && s !== null ? (s as any).category : 'ZTE C320';
+                                return cat === activeShortcutCategoryTab;
+                              });
+
+                              if (filtered.length === 0) {
+                                return <span className="text-[11px] text-slate-500 italic px-2 py-1">Belum ada perintah dalam kategori ini.</span>;
+                              }
+
+                              return filtered.map(([name, s]) => {
+                                const script = typeof s === 'object' && s !== null ? (s as any).body : s;
+                                return (
+                                  <button
+                                    key={name}
+                                    onClick={() => isTelnetConnected && sendCommandToTerminal(script)}
+                                    disabled={!isTelnetConnected}
+                                    title={script}
+                                    className={`px-2.5 py-1 bg-slate-800/80 border border-slate-700/70 rounded-md text-[11px] font-sans font-bold uppercase transition-all whitespace-nowrap ${
+                                      isTelnetConnected
+                                        ? 'text-slate-200 hover:text-emerald-400 hover:border-emerald-500 hover:bg-slate-800 shadow-sm cursor-pointer'
+                                        : 'text-slate-600 opacity-40 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {name}
+                                  </button>
+                                );
+                              });
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2261,7 +2360,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>🌐</span> Tambah Node OLT Baru
+                      <Server className="w-4 h-4" />
+                      <span>Tambah Node OLT Baru</span>
                     </h3>
                   </div>
                   <div className="space-y-3">
@@ -2337,7 +2437,8 @@ const App: React.FC = () => {
                       className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-500/30 flex items-center gap-1.5 shadow-sm"
                       title="Isi ulang / pulihkan seluruh data bawaan ke database MySQL & Server"
                     >
-                      <span>🔄</span> Muat Data Bawaan
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Muat Data Bawaan</span>
                     </button>
                   </div>
 
@@ -2353,7 +2454,8 @@ const App: React.FC = () => {
                           onClick={() => seedDatabaseManual(false)}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all inline-flex items-center gap-2"
                         >
-                          <span>⚡</span> Muat Seluruh Data Bawaan Sekarang
+                          <RotateCw className="w-3.5 h-3.5" />
+                          <span>Muat Seluruh Data Bawaan Sekarang</span>
                         </button>
                       </div>
                     ) : (
@@ -2418,7 +2520,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>🗺️</span> Tambah Area & Sub-Tab Baru
+                      <FolderTree className="w-4 h-4" />
+                      <span>Tambah Area & Sub-Tab Baru</span>
                     </h3>
                   </div>
 
@@ -2588,7 +2691,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>📝</span> Script Designer GPON
+                      <FileCode2 className="w-4 h-4" />
+                      <span>Script Designer GPON</span>
                     </h3>
                   </div>
 
@@ -2704,7 +2808,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>⌨️</span> Tambah Perintah CLI Shortcut
+                      <Command className="w-4 h-4" />
+                      <span>Tambah Perintah CLI Shortcut</span>
                     </h3>
                   </div>
 
@@ -2888,7 +2993,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>🚀</span> Tambah Profile Bandwidth
+                      <Gauge className="w-4 h-4" />
+                      <span>Tambah Profile Bandwidth</span>
                     </h3>
                   </div>
 
@@ -3004,7 +3110,8 @@ const App: React.FC = () => {
                 }`}>
                   <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
                     <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                      <span>👥</span> Tambah Pengguna Baru
+                      <Users className="w-4 h-4" />
+                      <span>Tambah Pengguna Baru</span>
                     </h3>
                   </div>
 
