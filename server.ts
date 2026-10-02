@@ -402,6 +402,8 @@ wss.on('connection', (ws) => {
           });
 
           connection.connect(targetPort, ip, () => {
+            connection.setTimeout(0);            // matikan idle timeout setelah terhubung
+            connection.setKeepAlive(true, 30000); // jaga koneksi tetap hidup (opsional)
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'connection_status',
