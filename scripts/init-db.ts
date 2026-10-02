@@ -1,6 +1,13 @@
 import mysql from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
+import {
+  INITIAL_OLT_CONFIG,
+  INITIAL_TEMPLATES,
+  INITIAL_SHORTCUTS,
+  DEFAULT_SPEED_PROFILES,
+  DEFAULT_USERS
+} from '../constants.ts';
 
 const DB_CONFIG = {
   host: process.env.MYSQL_HOST || 'localhost',
@@ -103,94 +110,97 @@ async function main() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    console.log('[3/4] Melakukan sinkronisasi data awal dari database.json...');
+    console.log('[3/4] Melakukan sinkronisasi & seeding data awal ke MySQL...');
+    
+    // Tentukan sumber data awal (database.json atau constants.ts)
+    let oltData: Record<string, any> = INITIAL_OLT_CONFIG;
+    let tplData: Record<string, string> = INITIAL_TEMPLATES;
+    let shortcutData: Record<string, any> = INITIAL_SHORTCUTS;
+    let speedData: string[] = DEFAULT_SPEED_PROFILES;
+    let userData: any[] = DEFAULT_USERS;
+
     const dbJsonPath = path.resolve(process.cwd(), 'database.json');
     if (fs.existsSync(dbJsonPath)) {
       try {
         const raw = fs.readFileSync(dbJsonPath, 'utf-8');
-        const data = JSON.parse(raw);
-
-        // 1. Seed OLT Configs
-        if (data.oltConfigs && typeof data.oltConfigs === 'object') {
-          for (const [id, cfg] of Object.entries<any>(data.oltConfigs)) {
-            await connection.query(
-              `INSERT INTO olt_configs (id, code, username, password, subtabs)
-               VALUES (?, ?, ?, ?, ?)
-               ON DUPLICATE KEY UPDATE code = VALUES(code), username = VALUES(username), password = VALUES(password), subtabs = VALUES(subtabs)`,
-              [id, cfg.code || id, cfg.username || '', cfg.password || '', JSON.stringify(cfg.subtabs || {})]
-            );
-          }
-          console.log(`  ✓ OLT Configs (${Object.keys(data.oltConfigs).length} node tersimpan)`);
-        }
-
-        // 2. Seed Templates
-        if (data.templates && typeof data.templates === 'object') {
-          for (const [name, body] of Object.entries<any>(data.templates)) {
-            await connection.query(
-              `INSERT INTO templates (name, body)
-               VALUES (?, ?)
-               ON DUPLICATE KEY UPDATE body = VALUES(body)`,
-              [name, String(body)]
-            );
-          }
-          console.log(`  ✓ Templates (${Object.keys(data.templates).length} template tersimpan)`);
-        }
-
-        // 3. Seed Shortcuts
-        if (data.terminalShortcuts && typeof data.terminalShortcuts === 'object') {
-          for (const [name, s] of Object.entries<any>(data.terminalShortcuts)) {
-            const body = typeof s === 'object' && s !== null ? s.body : String(s);
-            const category = typeof s === 'object' && s !== null ? s.category : 'ZTE C320';
-            await connection.query(
-              `INSERT INTO shortcuts (name, body, category)
-               VALUES (?, ?, ?)
-               ON DUPLICATE KEY UPDATE body = VALUES(body), category = VALUES(category)`,
-              [name, body, category]
-            );
-          }
-          console.log(`  ✓ Shortcuts (${Object.keys(data.terminalShortcuts).length} shortcut tersimpan)`);
-        }
-
-        // 4. Seed Speed Profiles
-        if (Array.isArray(data.speedProfiles)) {
-          for (const p of data.speedProfiles) {
-            await connection.query(
-              `INSERT IGNORE INTO speed_profiles (name) VALUES (?)`,
-              [String(p)]
-            );
-          }
-          console.log(`  ✓ Speed Profiles (${data.speedProfiles.length} profile tersimpan)`);
-        }
-
-        // 5. Seed Users
-        if (Array.isArray(data.users) && data.users.length > 0) {
-          for (const u of data.users) {
-            await connection.query(
-              `INSERT INTO users (id, username, name, password, role, createdAt)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role)`,
-              [u.id, u.username, u.name || u.username, u.password || 'admin', u.role || 'admin', u.createdAt || new Date().toISOString()]
-            );
-          }
-          console.log(`  ✓ Users (${data.users.length} akun tersimpan)`);
-        }
+        const parsed = JSON.parse(raw);
+        if (parsed.oltConfigs && Object.keys(parsed.oltConfigs).length > 0) oltData = parsed.oltConfigs;
+        if (parsed.templates && Object.keys(parsed.templates).length > 0) tplData = parsed.templates;
+        if (parsed.terminalShortcuts && Object.keys(parsed.terminalShortcuts).length > 0) shortcutData = parsed.terminalShortcuts;
+        if (Array.isArray(parsed.speedProfiles) && parsed.speedProfiles.length > 0) speedData = parsed.speedProfiles;
+        if (Array.isArray(parsed.users) && parsed.users.length > 0) userData = parsed.users;
       } catch (err: any) {
-        console.warn('  ⚠️ Gagal membaca data awal dari database.json:', err.message);
+        console.warn('  ⚠️ Menggunakan fallback constants:', err.message);
       }
     }
 
-    console.log('[4/4] Menghasilkan file schema.sql mandiri...');
-    generateSchemaSql();
+    // 1. Seed OLT Configs
+    for (const [id, cfg] of Object.entries<any>(oltData)) {
+      await connection.query(
+        `INSERT INTO olt_configs (id, code, username, password, subtabs)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE code = VALUES(code), username = VALUES(username), password = VALUES(password), subtabs = VALUES(subtabs)`,
+        [id, cfg.code || id, cfg.username || '', cfg.password || '', JSON.stringify(cfg.subtabs || {})]
+      );
+    }
+    console.log(`  ✓ OLT Configs (${Object.keys(oltData).length} node berhasil disinkronkan)`);
+
+    // 2. Seed Templates
+    for (const [name, body] of Object.entries<any>(tplData)) {
+      await connection.query(
+        `INSERT INTO templates (name, body)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE body = VALUES(body)`,
+        [name, String(body)]
+      );
+    }
+    console.log(`  ✓ Templates (${Object.keys(tplData).length} template tersimpan)`);
+
+    // 3. Seed Shortcuts
+    for (const [name, s] of Object.entries<any>(shortcutData)) {
+      const body = typeof s === 'object' && s !== null ? s.body : String(s);
+      const category = typeof s === 'object' && s !== null ? s.category : 'ZTE C320';
+      await connection.query(
+        `INSERT INTO shortcuts (name, body, category)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE body = VALUES(body), category = VALUES(category)`,
+        [name, body, category]
+      );
+    }
+    console.log(`  ✓ Shortcuts (${Object.keys(shortcutData).length} shortcut tersimpan)`);
+
+    // 4. Seed Speed Profiles
+    for (const p of speedData) {
+      await connection.query(
+        `INSERT IGNORE INTO speed_profiles (name) VALUES (?)`,
+        [String(p)]
+      );
+    }
+    console.log(`  ✓ Speed Profiles (${speedData.length} profile tersimpan)`);
+
+    // 5. Seed Users
+    for (const u of userData) {
+      await connection.query(
+        `INSERT INTO users (id, username, name, password, role, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role)`,
+        [u.id, u.username, u.name || u.username, u.password || 'admin', u.role || 'admin', u.createdAt || new Date().toISOString()]
+      );
+    }
+    console.log(`  ✓ Users (${userData.length} akun tersimpan)`);
+
+    console.log('[4/4] Menghasilkan file schema.sql lengkap dengan data bawaan...');
+    generateSchemaSql(oltData, tplData, shortcutData, speedData, userData);
 
     console.log('----------------------------------------------------');
-    console.log(`🎉 Berhasil! Skema database MySQL \`${DB_CONFIG.database}\` telah dibuat dan siap digunakan.`);
+    console.log(`🎉 Berhasil! Skema database MySQL \`${DB_CONFIG.database}\` telah dibuat dan terisi data.`);
     console.log('----------------------------------------------------');
   } catch (err: any) {
     console.warn('\n⚠️ [Catatan MySQL]: Tidak dapat terhubung ke MySQL server pada saat build.');
     console.warn(`   Detail: ${err.message}`);
     console.warn(`   Target: host=${DB_CONFIG.host}, user=${DB_CONFIG.user}, db=${DB_CONFIG.database}`);
-    console.log('   Membuat file `schema.sql` cadangan agar dapat diimport kapan saja...');
-    generateSchemaSql();
+    console.log('   Membuat file `schema.sql` cadangan lengkap dengan data bawaan...');
+    generateSchemaSql(INITIAL_OLT_CONFIG, INITIAL_TEMPLATES, INITIAL_SHORTCUTS, DEFAULT_SPEED_PROFILES, DEFAULT_USERS);
     console.log('   File `schema.sql` siap di-import secara manual jika service MySQL belum aktif.\n');
   } finally {
     if (connection) {
@@ -201,16 +211,48 @@ async function main() {
   }
 }
 
-function generateSchemaSql() {
-  const sql = `-- Skema Database MySQL untuk Whusnet OLT Pro / Web Aktivasi
--- Database: web_aktivasi
--- User: whusnet_web_aktivasi
--- Host: localhost
+function escapeSql(str: string): string {
+  if (typeof str !== 'string') return "''";
+  return "'" + str.replace(/[\0\x08\x09\x1a\n\r"'\\\%]/g, (char) => {
+    switch (char) {
+      case "\0": return "\\0";
+      case "\x08": return "\\b";
+      case "\x09": return "\\t";
+      case "\x1a": return "\\z";
+      case "\n": return "\\n";
+      case "\r": return "\\r";
+      case "\"":
+      case "'":
+      case "\\":
+      case "%":
+        return "\\" + char;
+      default:
+        return char;
+    }
+  }) + "'";
+}
+
+function generateSchemaSql(
+  oltData: Record<string, any>,
+  tplData: Record<string, string>,
+  shortcutData: Record<string, any>,
+  speedData: string[],
+  userData: any[]
+) {
+  let sql = `-- ============================================================
+-- Skema & Data Database MySQL untuk Whusnet OLT Pro / Web Aktivasi
+-- Database : web_aktivasi
+-- User     : whusnet_web_aktivasi
+-- Password : Strategi*1
+-- Host     : localhost
+-- ============================================================
 
 CREATE DATABASE IF NOT EXISTS \`web_aktivasi\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE \`web_aktivasi\`;
 
+-- ------------------------------------------------------------
 -- 1. Tabel OLT Configs
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS \`olt_configs\` (
   \`id\` VARCHAR(100) NOT NULL,
   \`code\` TEXT NOT NULL,
@@ -221,7 +263,9 @@ CREATE TABLE IF NOT EXISTS \`olt_configs\` (
   PRIMARY KEY (\`id\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
 -- 2. Tabel Templates
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS \`templates\` (
   \`name\` VARCHAR(100) NOT NULL,
   \`body\` MEDIUMTEXT NOT NULL,
@@ -229,7 +273,9 @@ CREATE TABLE IF NOT EXISTS \`templates\` (
   PRIMARY KEY (\`name\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
 -- 3. Tabel Shortcuts
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS \`shortcuts\` (
   \`name\` VARCHAR(100) NOT NULL,
   \`body\` MEDIUMTEXT NOT NULL,
@@ -238,14 +284,18 @@ CREATE TABLE IF NOT EXISTS \`shortcuts\` (
   PRIMARY KEY (\`name\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
 -- 4. Tabel Speed Profiles
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS \`speed_profiles\` (
   \`name\` VARCHAR(100) NOT NULL,
   \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (\`name\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
 -- 5. Tabel Users
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS \`users\` (
   \`id\` VARCHAR(100) NOT NULL,
   \`username\` VARCHAR(100) NOT NULL,
@@ -258,10 +308,51 @@ CREATE TABLE IF NOT EXISTS \`users\` (
   UNIQUE KEY \`uniq_username\` (\`username\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Seed Data Admin Bawaan
-INSERT IGNORE INTO \`users\` (\`id\`, \`username\`, \`name\`, \`password\`, \`role\`, \`createdAt\`)
-VALUES ('1', 'admin', 'Administrator', 'admin', 'admin', '2026-09-30T00:00:00.000Z');
+-- ============================================================
+-- SEED DATA BAWAAN / INITIAL DATA
+-- ============================================================
+
+-- Data OLT Configs
 `;
+
+  for (const [id, cfg] of Object.entries<any>(oltData)) {
+    const code = escapeSql(cfg.code || id);
+    const user = escapeSql(cfg.username || '');
+    const pass = escapeSql(cfg.password || '');
+    const subtabs = escapeSql(JSON.stringify(cfg.subtabs || {}));
+    sql += `INSERT INTO \`olt_configs\` (\`id\`, \`code\`, \`username\`, \`password\`, \`subtabs\`) VALUES (${escapeSql(id)}, ${code}, ${user}, ${pass}, ${subtabs}) ON DUPLICATE KEY UPDATE \`code\`=${code}, \`username\`=${user}, \`password\`=${pass}, \`subtabs\`=${subtabs};\n`;
+  }
+
+  sql += `\n-- Data Templates\n`;
+  for (const [name, body] of Object.entries<any>(tplData)) {
+    const bodyEsc = escapeSql(String(body));
+    sql += `INSERT INTO \`templates\` (\`name\`, \`body\`) VALUES (${escapeSql(name)}, ${bodyEsc}) ON DUPLICATE KEY UPDATE \`body\`=${bodyEsc};\n`;
+  }
+
+  sql += `\n-- Data Shortcuts\n`;
+  for (const [name, s] of Object.entries<any>(shortcutData)) {
+    const body = typeof s === 'object' && s !== null ? s.body : String(s);
+    const category = typeof s === 'object' && s !== null ? s.category : 'ZTE C320';
+    const bodyEsc = escapeSql(body);
+    const catEsc = escapeSql(category);
+    sql += `INSERT INTO \`shortcuts\` (\`name\`, \`body\`, \`category\`) VALUES (${escapeSql(name)}, ${bodyEsc}, ${catEsc}) ON DUPLICATE KEY UPDATE \`body\`=${bodyEsc}, \`category\`=${catEsc};\n`;
+  }
+
+  sql += `\n-- Data Speed Profiles\n`;
+  for (const p of speedData) {
+    sql += `INSERT IGNORE INTO \`speed_profiles\` (\`name\`) VALUES (${escapeSql(String(p))});\n`;
+  }
+
+  sql += `\n-- Data Akun Pengguna\n`;
+  for (const u of userData) {
+    const uId = escapeSql(String(u.id));
+    const uName = escapeSql(u.username);
+    const uFullName = escapeSql(u.name || u.username);
+    const uPass = escapeSql(u.password || 'admin');
+    const uRole = escapeSql(u.role || 'admin');
+    const uCreated = escapeSql(u.createdAt || '2026-09-30T00:00:00.000Z');
+    sql += `INSERT INTO \`users\` (\`id\`, \`username\`, \`name\`, \`password\`, \`role\`, \`createdAt\`) VALUES (${uId}, ${uName}, ${uFullName}, ${uPass}, ${uRole}, ${uCreated}) ON DUPLICATE KEY UPDATE \`name\`=${uFullName}, \`role\`=${uRole};\n`;
+  }
 
   fs.writeFileSync(path.resolve(process.cwd(), 'schema.sql'), sql, 'utf-8');
 }

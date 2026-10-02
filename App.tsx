@@ -1,7 +1,13 @@
 
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { INITIAL_OLT_CONFIG, INITIAL_TEMPLATES } from './constants.ts';
+import {
+  INITIAL_OLT_CONFIG,
+  INITIAL_TEMPLATES,
+  INITIAL_SHORTCUTS,
+  DEFAULT_SPEED_PROFILES,
+  DEFAULT_USERS
+} from './constants.ts';
 import { ScriptData, OLTConfig, SubTabConfig, User, NavMenu } from './types.ts';
 
 const getApiBase = () => {
@@ -13,35 +19,14 @@ const getApiBase = () => {
   return '';
 };
 
-const DEFAULT_PROFILES = [
-  'INTERNET_10M',
-  'INTERNET_20M',
-  'INTERNET_30M',
-  'INTERNET_50M',
-  'INTERNET_100M',
-  'INTERNET_150M',
-  'INTERNET_200M'
-];
-
-const DEFAULT_USERS: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    name: 'Administrator',
-    password: 'admin',
-    role: 'admin',
-    createdAt: '2026-09-30T00:00:00.000Z'
-  }
-];
-
 type TerminalState = 'NORMAL' | 'PASSWORD' | 'NOECHO' | 'USERNAME';
 
 const App: React.FC = () => {
   const [apiBase] = useState(getApiBase());
-  const [oltConfigs, setOltConfigs] = useState<Record<string, OLTConfig>>(INITIAL_OLT_CONFIG || {});
-  const [templates, setTemplates] = useState<Record<string, string>>(INITIAL_TEMPLATES || {});
-  const [terminalShortcuts, setTerminalShortcuts] = useState<Record<string, { body: string; category: string } | string>>({});
-  const [speedProfiles, setSpeedProfiles] = useState<string[]>([]);
+  const [oltConfigs, setOltConfigs] = useState<Record<string, OLTConfig>>(INITIAL_OLT_CONFIG);
+  const [templates, setTemplates] = useState<Record<string, string>>(INITIAL_TEMPLATES);
+  const [terminalShortcuts, setTerminalShortcuts] = useState<Record<string, { body: string; category: string } | string>>(INITIAL_SHORTCUTS);
+  const [speedProfiles, setSpeedProfiles] = useState<string[]>(DEFAULT_SPEED_PROFILES);
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
   const [isLoading, setIsLoading] = useState(true);
@@ -92,7 +77,14 @@ const App: React.FC = () => {
   const [isTelnetConnected, setIsTelnetConnected] = useState(false);
   const [isTelnetConnecting, setIsTelnetConnecting] = useState(false);
   const [terminalState, setTerminalState] = useState<TerminalState>('NORMAL');
-  const [terminalFontSize, setTerminalFontSize] = useState(11); 
+  const [terminalFontSize, setTerminalFontSize] = useState(11);
+  const [terminalProtocol, setTerminalProtocol] = useState<'telnet' | 'ssh'>('telnet');
+  const [terminalPort, setTerminalPort] = useState<string>('23');
+  const [terminalMode, setTerminalMode] = useState<'real' | 'simulation'>('real');
+  const [terminalUser, setTerminalUser] = useState<string>('');
+  const [terminalPass, setTerminalPass] = useState<string>('');
+  const [isTestingPing, setIsTestingPing] = useState(false);
+  const [showTerminalSettings, setShowTerminalSettings] = useState(false);
   
   const stateRef = useRef<TerminalState>('NORMAL');
   const wsRef = useRef<WebSocket | null>(null);
@@ -291,18 +283,31 @@ const App: React.FC = () => {
       const response = await fetch(`${apiBase}/api/data`);
       if (response.ok) {
         const data = await response.json();
-        setOltConfigs(data.oltConfigs || {});
-        setTemplates(data.templates || {});
-        setTerminalShortcuts(data.terminalShortcuts || {});
-        setSpeedProfiles(data.speedProfiles && data.speedProfiles.length > 0 ? data.speedProfiles : DEFAULT_PROFILES);
-        if (Array.isArray(data.users) && data.users.length > 0) {
-          setUsers(data.users);
-        }
+        const olts = (data.oltConfigs && Object.keys(data.oltConfigs).length > 0) ? data.oltConfigs : INITIAL_OLT_CONFIG;
+        const tpls = (data.templates && Object.keys(data.templates).length > 0) ? data.templates : INITIAL_TEMPLATES;
+        const shortcuts = (data.terminalShortcuts && Object.keys(data.terminalShortcuts).length > 0) ? data.terminalShortcuts : INITIAL_SHORTCUTS;
+        const profiles = (Array.isArray(data.speedProfiles) && data.speedProfiles.length > 0) ? data.speedProfiles : DEFAULT_SPEED_PROFILES;
+        const userList = (Array.isArray(data.users) && data.users.length > 0) ? data.users : DEFAULT_USERS;
+
+        setOltConfigs(olts);
+        setTemplates(tpls);
+        setTerminalShortcuts(shortcuts);
+        setSpeedProfiles(profiles);
+        setUsers(userList);
         setSyncStatus('synced');
+
+        // Jika data di server sebelumnya masih kosong, auto-save agar tabel MySQL terisi permanen
+        if (!data.oltConfigs || Object.keys(data.oltConfigs).length === 0) {
+          saveToServer(olts, tpls, shortcuts, profiles, userList);
+        }
       } else {
         setSyncStatus('error');
       }
-    } catch (err) { setSyncStatus('error'); } finally { setIsLoading(false); }
+    } catch {
+      setSyncStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
   }, [apiBase]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -324,8 +329,37 @@ const App: React.FC = () => {
         })
       });
       if (response.ok) setSyncStatus('synced'); else setSyncStatus('error');
-    } catch (err) { setSyncStatus('error'); }
+    } catch { setSyncStatus('error'); }
   }, [apiBase, speedProfiles, users]);
+
+  const seedDatabaseManual = async (force = false) => {
+    if (force && !confirm("Muat ulang seluruh konfigurasi OLT, Area & VLAN, Template, dan Shortcut bawaan?")) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/api/seed?force=${force}`);
+      if (res.ok) {
+        alert("Berhasil! Data bawaan telah dimuat ke MySQL & server.");
+        await loadData();
+      } else {
+        setOltConfigs(INITIAL_OLT_CONFIG);
+        setTemplates(INITIAL_TEMPLATES);
+        setTerminalShortcuts(INITIAL_SHORTCUTS);
+        setSpeedProfiles(DEFAULT_SPEED_PROFILES);
+        setUsers(DEFAULT_USERS);
+        saveToServer(INITIAL_OLT_CONFIG, INITIAL_TEMPLATES, INITIAL_SHORTCUTS, DEFAULT_SPEED_PROFILES, DEFAULT_USERS);
+        alert("Data bawaan berhasil dipulihkan secara lokal!");
+      }
+    } catch {
+      setOltConfigs(INITIAL_OLT_CONFIG);
+      setTemplates(INITIAL_TEMPLATES);
+      setTerminalShortcuts(INITIAL_SHORTCUTS);
+      setSpeedProfiles(DEFAULT_SPEED_PROFILES);
+      setUsers(DEFAULT_USERS);
+      alert("Data bawaan berhasil dipulihkan!");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const copyToClipboard = (text: string) => {
     if (!text) return;
@@ -354,38 +388,74 @@ const App: React.FC = () => {
         wsRef.current.close();
         wsRef.current = null;
         setIsTelnetConnected(false);
+        setIsTelnetConnecting(false);
     }
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
   }, []);
 
-  useEffect(() => {
-    if (terminalContainerRef.current && !xtermRef.current) {
-      const TerminalLib = (window as any).Terminal;
-      if (!TerminalLib) return;
+  const initTerminal = useCallback(() => {
+    if (!terminalContainerRef.current) return;
+    const TerminalLib = (window as any).Terminal;
+    if (!TerminalLib) return;
+
+    if (!xtermRef.current || !terminalContainerRef.current.hasChildNodes()) {
+      terminalContainerRef.current.innerHTML = '';
+      if (xtermRef.current) {
+        try { xtermRef.current.dispose(); } catch {}
+        xtermRef.current = null;
+      }
+
       const term = new TerminalLib({
         cursorBlink: true, 
         fontSize: terminalFontSize, 
         fontFamily: 'JetBrains Mono, monospace',
-        theme: { background: '#050505', foreground: '#10b981', cursor: '#10b981' },
+        theme: {
+          background: '#050505',
+          foreground: '#10b981',
+          cursor: '#10b981',
+          selectionBackground: 'rgba(16, 185, 129, 0.3)'
+        },
         convertEol: true, 
-        rows: 45, // Fixed 45 rows
+        rows: 35,
         cols: 100
       });
       term.open(terminalContainerRef.current);
       xtermRef.current = term;
+
+      term.writeln('\x1b[1;36m============================================================\x1b[0m');
+      term.writeln('\x1b[1;32m  Whusnet OLT Pro - CLI Interactive Terminal\x1b[0m');
+      term.writeln('\x1b[1;36m============================================================\x1b[0m');
+      term.writeln('\x1b[90mPilih OLT di panel kiri, pilih protokol (Telnet/SSH) atau Mode Simulasi,\x1b[0m');
+      term.writeln('\x1b[90mlalu klik tombol [Connect] untuk memulai.\x1b[0m\r\n');
+
       term.onData((data: string) => {
         resetIdleTimer();
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (data === '\r') { term.write('\r\n'); ws.send(JSON.stringify({ type: 'input', data: '\r' })); }
-        else { if (stateRef.current === 'USERNAME') term.write(data); ws.send(JSON.stringify({ type: 'input', data })); }
+        if (data === '\r') {
+          term.write('\r\n');
+          ws.send(JSON.stringify({ type: 'input', data: '\r' }));
+        } else {
+          if (stateRef.current === 'USERNAME') term.write(data);
+          ws.send(JSON.stringify({ type: 'input', data }));
+        }
       });
     }
   }, [terminalFontSize, resetIdleTimer]);
 
   useEffect(() => {
+    if (activeRightTab === 'telnet' && activeNav === 'generator') {
+      const timer = setTimeout(() => {
+        initTerminal();
+        if (xtermRef.current) xtermRef.current.focus();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [activeRightTab, activeNav, initTerminal]);
+
+  useEffect(() => {
     if (xtermRef.current) {
-        xtermRef.current.options.fontSize = terminalFontSize;
+      xtermRef.current.options.fontSize = terminalFontSize;
     }
   }, [terminalFontSize]);
 
@@ -644,14 +714,63 @@ const App: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (selectedOLT && oltConfigs[selectedOLT]) {
+      const cfg = oltConfigs[selectedOLT];
+      if (cfg.username) setTerminalUser(cfg.username);
+      if (cfg.password) setTerminalPass(cfg.password);
+    }
+  }, [selectedOLT, oltConfigs]);
+
   const loginOLTAuto = () => {
-    if (!isTelnetConnected || !wsRef.current || !selectedOLT || !oltConfigs[selectedOLT]) return alert("Pilih OLT & Connect!");
-    const config = oltConfigs[selectedOLT];
-    if (config.username) wsRef.current.send(JSON.stringify({ type: 'input', data: config.username + '\r' }));
-    if (config.password) setTimeout(() => {
-        wsRef.current?.send(JSON.stringify({ type: 'input', data: config.password + '\r' }));
-    }, 600);
+    if (!isTelnetConnected || !wsRef.current) return alert("Terminal belum terhubung! Silakan klik tombol [Connect] terlebih dahulu.");
+    const userToSend = terminalUser || (selectedOLT ? oltConfigs[selectedOLT]?.username : '') || 'admin';
+    const passToSend = terminalPass || (selectedOLT ? oltConfigs[selectedOLT]?.password : '');
+
+    if (xtermRef.current) {
+      xtermRef.current.write(`\r\n\x1b[1;33m[AUTO LOGIN: Mengirim Kredensial ${userToSend}]...\x1b[0m\r\n`);
+    }
+
+    if (userToSend) {
+      wsRef.current.send(JSON.stringify({ type: 'input', data: userToSend + '\r' }));
+    }
+    if (passToSend) {
+      setTimeout(() => {
+        wsRef.current?.send(JSON.stringify({ type: 'input', data: passToSend + '\r' }));
+      }, 500);
+    }
     resetIdleTimer();
+  };
+
+  const testConnection = async () => {
+    if (!currentOltIP && terminalMode === 'real') return alert("Pilih OLT terlebih dahulu!");
+    setIsTestingPing(true);
+    const targetPort = terminalPort || (terminalProtocol === 'ssh' ? '22' : '23');
+    const targetHost = currentOltIP || '10.123.123.15';
+
+    if (xtermRef.current) {
+      xtermRef.current.write(`\r\n\x1b[1;36m[DIAGNOSTIK: Memeriksa konektivitas ke ${targetHost}:${targetPort}...]\x1b[0m\r\n`);
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/api/test-connection?host=${encodeURIComponent(targetHost)}&port=${targetPort}`);
+      const data = await res.json();
+      if (xtermRef.current) {
+        if (data.reachable) {
+          xtermRef.current.writeln(`\x1b[1;32m✓ ${data.message}\x1b[0m`);
+        } else {
+          xtermRef.current.writeln(`\x1b[1;31m✗ ${data.message}\x1b[0m`);
+          xtermRef.current.writeln(`\x1b[33mTips: Jika host OLT berada di jaringan lokal/private, server ini belum terhubung ke VPN/IP tersebut.\x1b[0m`);
+          xtermRef.current.writeln(`\x1b[36mAnda dapat mengaktifkan [Mode Simulasi] di samping untuk menguji CLI interaktif langsung sekarang!\x1b[0m\r\n`);
+        }
+      }
+    } catch (err: any) {
+      if (xtermRef.current) {
+        xtermRef.current.writeln(`\x1b[1;31m✗ Gagal tes koneksi: ${err.message}\x1b[0m\r\n`);
+      }
+    } finally {
+      setIsTestingPing(false);
+    }
   };
 
   const openWebOLT = () => {
@@ -660,7 +779,7 @@ const App: React.FC = () => {
   };
 
   const sendCommandToTerminal = (scriptRaw: string) => {
-    if (!isTelnetConnected || !wsRef.current) return alert("Terminal offline!");
+    if (!isTelnetConnected || !wsRef.current) return alert("Terminal offline! Klik [Connect] terlebih dahulu.");
     const lockCommands = Object.entries(locks).map(([n, l]) => `interface eth eth_0/${n} state ${l ? 'lock' : 'unlock'}`).join('\n');
     const data: ScriptData = { slot, port, onu, sn, odp, profile, vlan: currentCfg?.vlan || 0, vlanProfile: currentCfg?.vlanProfile || '', pppoe: (currentCfg?.ppp_prefix || '') + pppSuffix, locks: lockCommands, vlanLines: '' };
     let processed = String(scriptRaw);
@@ -680,30 +799,100 @@ const App: React.FC = () => {
     resetIdleTimer();
   };
 
-  const connectTerminal = () => {
-    if (!currentOltIP) return alert("Pilih OLT!");
+  const connectTerminal = (overrideMode?: 'real' | 'simulation') => {
+    const activeMode = overrideMode || terminalMode;
+    if (overrideMode) setTerminalMode(overrideMode);
+
+    if (!currentOltIP && activeMode === 'real') {
+      alert("Pilih OLT di panel sebelah kiri terlebih dahulu atau aktifkan [Mode Simulasi]!");
+      return;
+    }
+
     setIsTelnetConnecting(true);
-    const wsUrl = apiBase.replace(/^http/, 'ws');
+
+    let wsUrl = '';
+    if (apiBase && apiBase.startsWith('http')) {
+      wsUrl = apiBase.replace(/^http/, 'ws');
+    } else if (typeof window !== 'undefined') {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${proto}//${window.location.host}`;
+    }
+
+    if (!wsUrl) {
+      setIsTelnetConnecting(false);
+      alert("URL server WebSocket tidak valid!");
+      return;
+    }
+
     try {
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+      }
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+
+      const targetPort = terminalPort || (terminalProtocol === 'ssh' ? '22' : '23');
+      const targetUser = terminalUser || (selectedOLT ? oltConfigs[selectedOLT]?.username : '') || 'admin';
+      const targetPass = terminalPass || (selectedOLT ? oltConfigs[selectedOLT]?.password : '');
+
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'connect', ip: currentOltIP, protocol: 'telnet', user: 'admin', password: '' }));
-        setIsTelnetConnected(true); setIsTelnetConnecting(false); setTerminalState('NORMAL');
+        ws.send(JSON.stringify({
+          type: 'connect',
+          ip: currentOltIP || '10.123.123.15',
+          protocol: terminalProtocol,
+          port: targetPort,
+          user: targetUser,
+          password: targetPass,
+          mode: activeMode
+        }));
         resetIdleTimer();
       };
+
       ws.onmessage = (e) => {
-        const d = JSON.parse(e.data);
-        if (d.type === 'data' || d.type === 'status') xtermRef.current?.write(d.data || d.message);
-        else if (d.type === 'state') setTerminalState(d.data as TerminalState);
-        resetIdleTimer();
+        try {
+          const d = JSON.parse(e.data);
+          if (d.type === 'connection_status') {
+            setIsTelnetConnecting(false);
+            setIsTelnetConnected(Boolean(d.connected));
+            if (!d.connected) {
+              setTerminalState('NORMAL');
+            }
+          }
+          if (d.type === 'data' || d.type === 'status') {
+            xtermRef.current?.write(d.data || d.message || '');
+          } else if (d.type === 'state') {
+            setTerminalState(d.data as TerminalState);
+          }
+          resetIdleTimer();
+        } catch {
+          xtermRef.current?.write(e.data);
+        }
       };
-      ws.onclose = () => { 
-        setIsTelnetConnected(false); 
-        setIsTelnetConnecting(false); 
-        xtermRef.current?.writeln("\r\n\x1b[31m[OFFLINE / SESSION ENDED]\x1b[0m"); 
+
+      ws.onerror = () => {
+        setIsTelnetConnecting(false);
+        setIsTelnetConnected(false);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[1;31m[WEBSOCKET ERROR: Gagal terhubung ke backend]\x1b[0m");
+          xtermRef.current.writeln("\x1b[33mPastikan backend 'server.ts' berjalan atau beralih ke Mode Simulasi.\x1b[0m\r\n");
+        }
       };
-    } catch (e) { setIsTelnetConnecting(false); }
+
+      ws.onclose = () => {
+        setIsTelnetConnecting(false);
+        setIsTelnetConnected(false);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[31m[SESI TERMINAL DITUTUP / OFFLINE]\x1b[0m");
+        }
+      };
+    } catch (e: any) {
+      setIsTelnetConnecting(false);
+      setIsTelnetConnected(false);
+      if (xtermRef.current) {
+        xtermRef.current.writeln(`\r\n\x1b[31m[KONEKSI GAGAL: ${e.message}]\x1b[0m\r\n`);
+      }
+    }
   };
 
   const currentOltIP = useMemo(() => {
@@ -1567,17 +1756,202 @@ const App: React.FC = () => {
 
                   {/* LIVE TERMINAL PANEL */}
                   <div className={`flex-1 flex flex-col bg-[#050505] overflow-hidden relative ${activeRightTab !== 'telnet' ? 'hidden' : ''}`}>
-                    <div className="p-3 border-b border-emerald-900/20 bg-[#080c14] z-10 shrink-0 flex items-center justify-between gap-4">
+                    {/* Top Terminal Status & Control Bar */}
+                    <div className="p-2.5 sm:p-3 border-b border-emerald-900/20 bg-[#080c14] z-10 shrink-0 flex flex-wrap items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <div className={`shrink-0 w-2.5 h-2.5 rounded-full ${isTelnetConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`}></div>
-                        <span className="text-[11px] font-bold text-emerald-400 uppercase truncate">
-                          {isTelnetConnected ? `OLT: ${selectedOLT || currentOltIP}` : isTelnetConnecting ? 'CONNECTING...' : 'OFFLINE'}
-                        </span>
+                        <div className={`shrink-0 w-2.5 h-2.5 rounded-full ${
+                          isTelnetConnected
+                            ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                            : isTelnetConnecting
+                            ? 'bg-amber-500 animate-pulse'
+                            : 'bg-red-500'
+                        }`}></div>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-[11px] font-bold text-emerald-400 uppercase truncate">
+                            {isTelnetConnected
+                              ? `${terminalMode === 'simulation' ? '[SIMULASI] ' : ''}OLT: ${selectedOLT || currentOltIP || '10.123.123.15'}`
+                              : isTelnetConnecting
+                              ? 'MENYAMBUNGKAN...'
+                              : 'TERMINAL OFFLINE'}
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                            terminalMode === 'simulation'
+                              ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}>
+                            {terminalMode === 'simulation' ? 'Simulasi' : terminalProtocol.toUpperCase()}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="hidden md:flex items-center gap-2">
-                          <span className="text-[9px] text-slate-400 font-bold uppercase">Size: {terminalFontSize}</span>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {/* Mode Switcher: Simulasi vs Real OLT */}
+                        <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isTelnetConnected) disconnectTerminal();
+                              setTerminalMode('real');
+                            }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                              terminalMode === 'real'
+                                ? 'bg-cyan-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                            title="Hubungkan langsung ke IP OLT di jaringan lokal/VPN"
+                          >
+                            Real OLT
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isTelnetConnected) disconnectTerminal();
+                              setTerminalMode('simulation');
+                            }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                              terminalMode === 'simulation'
+                                ? 'bg-purple-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                            title="Mode demo/uji coba template tanpa perlu terhubung ke OLT fisik"
+                          >
+                            Simulasi
+                          </button>
+                        </div>
+
+                        {/* Settings Button (Port, Protocol, Kredensial) */}
+                        <button
+                          type="button"
+                          onClick={() => setShowTerminalSettings(!showTerminalSettings)}
+                          className={`px-2 py-1 border rounded text-[9px] font-bold uppercase transition-all flex items-center gap-1 ${
+                            showTerminalSettings
+                              ? 'bg-slate-700 border-cyan-500 text-cyan-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          }`}
+                          title="Pengaturan Port & Kredensial Terminal"
+                        >
+                          <span>⚙️</span> Opsi
+                        </button>
+
+                        {/* Ping / Cek OLT */}
+                        {terminalMode === 'real' && (
+                          <button
+                            type="button"
+                            onClick={testConnection}
+                            disabled={isTestingPing}
+                            className="px-2 py-1 bg-slate-800 border border-slate-700 text-cyan-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1"
+                            title="Cek apakah IP OLT dapat dijangkau dari server"
+                          >
+                            <span>📶</span> {isTestingPing ? 'Cek...' : 'Ping'}
+                          </button>
+                        )}
+
+                        {/* Clear Terminal */}
+                        <button
+                          type="button"
+                          onClick={clearTerminal}
+                          className="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 hover:text-white"
+                          title="Bersihkan layar terminal"
+                        >
+                          Clear
+                        </button>
+
+                        {/* Auto Login */}
+                        <button
+                          type="button"
+                          onClick={loginOLTAuto}
+                          disabled={!isTelnetConnected}
+                          title="Kirim username & password otomatis ke OLT"
+                          className="px-2.5 py-1 bg-slate-800 border border-slate-700 text-amber-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-30"
+                        >
+                          Login
+                        </button>
+
+                        {/* Connect / Disconnect Buttons */}
+                        {!isTelnetConnected ? (
+                          <button
+                            type="button"
+                            onClick={() => connectTerminal()}
+                            disabled={isTelnetConnecting}
+                            className="px-3.5 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase disabled:opacity-50 hover:bg-emerald-500 transition-all shadow-md shadow-emerald-600/30 flex items-center gap-1"
+                          >
+                            <span>⚡</span> {isTelnetConnecting ? 'Connecting...' : 'Connect'}
+                          </button>
+                        ) : (
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={disconnectTerminal}
+                              className="px-3 py-1 bg-rose-600 text-white rounded text-[9px] font-bold uppercase hover:bg-rose-500 transition-all"
+                            >
+                              DISCONNECT
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowPasteConfirm(true)}
+                              className="px-3 py-1 bg-cyan-600 text-white rounded text-[9px] font-bold uppercase hover:bg-cyan-500 transition-all shadow-md shadow-cyan-600/30"
+                            >
+                              PASTE SCRIPT
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Secondary Collapsible Terminal Settings Bar */}
+                    {showTerminalSettings && (
+                      <div className="p-2.5 bg-[#0c121e] border-b border-slate-800 text-xs flex flex-wrap items-center gap-3 animate-in slide-in-from-top-2 duration-150">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 font-bold uppercase">Protokol:</label>
+                          <select
+                            value={terminalProtocol}
+                            onChange={(e) => {
+                              const proto = e.target.value as 'telnet' | 'ssh';
+                              setTerminalProtocol(proto);
+                              setTerminalPort(proto === 'ssh' ? '22' : '23');
+                            }}
+                            className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white outline-none"
+                          >
+                            <option value="telnet">Telnet (23)</option>
+                            <option value="ssh">SSH (22)</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 font-bold uppercase">Port:</label>
+                          <input
+                            type="text"
+                            value={terminalPort}
+                            onChange={(e) => setTerminalPort(e.target.value)}
+                            placeholder="23"
+                            className="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white font-mono outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 font-bold uppercase">CLI User:</label>
+                          <input
+                            type="text"
+                            value={terminalUser}
+                            onChange={(e) => setTerminalUser(e.target.value)}
+                            placeholder="admin"
+                            className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 font-bold uppercase">CLI Pass:</label>
+                          <input
+                            type="password"
+                            value={terminalPass}
+                            onChange={(e) => setTerminalPass(e.target.value)}
+                            placeholder="••••••"
+                            className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Font: {terminalFontSize}px</span>
                           <input
                             type="range"
                             min="8"
@@ -1587,44 +1961,30 @@ const App: React.FC = () => {
                             className="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                           />
                         </div>
-
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={loginOLTAuto}
-                            disabled={!isTelnetConnected}
-                            title="Auto Login OLT"
-                            className="px-2.5 py-1 bg-slate-800 border border-slate-700 text-amber-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-30"
-                          >
-                            Login
-                          </button>
-
-                          {!isTelnetConnected ? (
-                            <button
-                              onClick={connectTerminal}
-                              disabled={isTelnetConnecting}
-                              className="px-3.5 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase disabled:opacity-50 hover:bg-emerald-500 transition-all shadow-md shadow-emerald-600/30"
-                            >
-                              Connect
-                            </button>
-                          ) : (
-                            <div className="flex gap-1.5">
-                              <button
-                                onClick={disconnectTerminal}
-                                className="px-3 py-1 bg-rose-600 text-white rounded text-[9px] font-bold uppercase hover:bg-rose-500 transition-all"
-                              >
-                                DISCONNECT
-                              </button>
-                              <button
-                                onClick={() => setShowPasteConfirm(true)}
-                                className="px-3 py-1 bg-cyan-600 text-white rounded text-[9px] font-bold uppercase hover:bg-cyan-500 transition-all shadow-md shadow-cyan-600/30"
-                              >
-                                PASTE SCRIPT
-                              </button>
-                            </div>
-                          )}
-                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Offline / Help Banner for Quick Simulation Switching */}
+                    {!isTelnetConnected && !isTelnetConnecting && (
+                      <div className="px-3 py-1.5 bg-[#0a1120] border-b border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 gap-2">
+                        <span>
+                          {terminalMode === 'real'
+                            ? `💡 OLT (${currentOltIP || '10.x.x.x'}) di jaringan private belum bisa dijangkau?`
+                            : '🕹️ Mode Simulasi aktif: Anda dapat menguji perintah CLI OLT tanpa perangkat fisik.'}
+                        </span>
+                        {terminalMode === 'real' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              connectTerminal('simulation');
+                            }}
+                            className="text-[10px] font-bold text-purple-400 hover:text-purple-300 underline uppercase shrink-0"
+                          >
+                            Beralih ke Mode Simulasi & Sambungkan →
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Scrollable area grouping terminal lines and shortcuts bar together */}
                     <div className="flex-1 overflow-auto custom-scrollbar bg-black relative flex flex-col justify-between">
@@ -1786,11 +2146,31 @@ const App: React.FC = () => {
                     <h3 className="text-sm font-bold uppercase tracking-wider">
                       Daftar Node OLT Terdaftar ({Object.keys(oltConfigs).length})
                     </h3>
+                    <button
+                      type="button"
+                      onClick={() => seedDatabaseManual(true)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-500/30 flex items-center gap-1.5 shadow-sm"
+                      title="Isi ulang / pulihkan seluruh data bawaan ke database MySQL & Server"
+                    >
+                      <span>🔄</span> Muat Data Bawaan
+                    </button>
                   </div>
 
                   <div className="space-y-2.5 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
                     {Object.keys(oltConfigs).length === 0 ? (
-                      <p className="text-xs text-slate-500 italic py-4">Belum ada OLT terdaftar. Silakan tambahkan pada form di samping.</p>
+                      <div className="text-center py-8 px-4 rounded-xl border border-dashed border-slate-700 space-y-3">
+                        <p className="text-sm font-bold text-slate-300">Database OLT Saat Ini Belum Memiliki Data</p>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto">
+                          Anda dapat mengisi database secara otomatis dengan konfigurasi lengkap OLT Whusnet, Area & VLAN, Template, dan Shortcut CLI bawaan.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => seedDatabaseManual(false)}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all inline-flex items-center gap-2"
+                        >
+                          <span>⚡</span> Muat Seluruh Data Bawaan Sekarang
+                        </button>
+                      </div>
                     ) : (
                       (Object.entries(oltConfigs) as [string, OLTConfig][]).map(([k, cfg]) => {
                         const isSelected = selectedOLT === k;
