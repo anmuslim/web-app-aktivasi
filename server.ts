@@ -777,9 +777,14 @@ app.post('/api/save', async (req, res) => {
   res.json({ status: 'success' });
 });
 
-// Vite middleware in dev, static files in production
+// Vite middleware in dev, static files in production / preview
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction = process.env.NODE_ENV === 'production' || 
+                       process.argv.includes('preview') || 
+                       process.argv.includes('--production') ||
+                       (process.argv.includes('start') && fs.existsSync(path.resolve('dist', 'index.html')));
+
+  if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
@@ -787,15 +792,26 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.resolve('dist', 'index.html'));
-    });
+    const distPath = path.resolve('dist');
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => {
+        res.sendFile(path.resolve(distPath, 'index.html'));
+      });
+    } else {
+      console.warn('⚠️ Folder dist/ belum ada. Menggunakan Vite dev middleware...');
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: false },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    }
   }
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`==========================================`);
-    console.log(`🌐 Whusnet OLT Pro Running on port ${PORT}`);
+    console.log(`🌐 Whusnet OLT Pro Running on port ${PORT} [${isProduction ? 'PRODUCTION / PREVIEW' : 'DEV'}]`);
     console.log(`📍 URL: http://0.0.0.0:${PORT}`);
     console.log(`==========================================`);
   });

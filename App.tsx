@@ -119,16 +119,21 @@ const App: React.FC = () => {
   const [isShortcutsExpanded, setIsShortcutsExpanded] = useState(false);
   const [showPasteConfirm, setShowPasteConfirm] = useState(false);
 
-  // Form States
+  // Form States (Pre-filled with standard initial parameters)
   const [slot, setSlot] = useState('1');
   const [port, setPort] = useState('1');
-  const [onu, setOnu] = useState('');
-  const [sn, setSn] = useState('');
-  const [odp, setOdp] = useState('');
-  const [pppSuffix, setPppSuffix] = useState('');
-  const [profile, setProfile] = useState('');
+  const [onu, setOnu] = useState('1');
+  const [sn, setSn] = useState('ZTEG12345678');
+  const [odp, setOdp] = useState('ODP-DYG-01');
+  const [pppSuffix, setPppSuffix] = useState('001');
+  const [profile, setProfile] = useState('INTERNET_20M');
   const [locks, setLocks] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true, 4: true });
   const [copySuccess, setCopySuccess] = useState(false);
+
+  // Local CLI simulation state refs
+  const localCliBufferRef = useRef('');
+  const localCliPromptRef = useRef('ZXHN-C320#');
+  const isLocalSimulationRef = useRef(false);
 
   // Profile Search Dropdown States
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -281,7 +286,8 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const response = await fetch(`${apiBase}/api/data`);
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
         const data = await response.json();
         const olts = (data.oltConfigs && Object.keys(data.oltConfigs).length > 0) ? data.oltConfigs : INITIAL_OLT_CONFIG;
         const tpls = (data.templates && Object.keys(data.templates).length > 0) ? data.templates : INITIAL_TEMPLATES;
@@ -301,9 +307,21 @@ const App: React.FC = () => {
           saveToServer(olts, tpls, shortcuts, profiles, userList);
         }
       } else {
+        // Fallback to constants agar UI tidak pernah kosong
+        setOltConfigs(prev => Object.keys(prev).length > 0 ? prev : INITIAL_OLT_CONFIG);
+        setTemplates(prev => Object.keys(prev).length > 0 ? prev : INITIAL_TEMPLATES);
+        setTerminalShortcuts(prev => Object.keys(prev).length > 0 ? prev : INITIAL_SHORTCUTS);
+        setSpeedProfiles(prev => prev.length > 0 ? prev : DEFAULT_SPEED_PROFILES);
+        setUsers(prev => prev.length > 0 ? prev : DEFAULT_USERS);
         setSyncStatus('error');
       }
     } catch {
+      // Fallback to constants on any network/JSON error
+      setOltConfigs(prev => Object.keys(prev).length > 0 ? prev : INITIAL_OLT_CONFIG);
+      setTemplates(prev => Object.keys(prev).length > 0 ? prev : INITIAL_TEMPLATES);
+      setTerminalShortcuts(prev => Object.keys(prev).length > 0 ? prev : INITIAL_SHORTCUTS);
+      setSpeedProfiles(prev => prev.length > 0 ? prev : DEFAULT_SPEED_PROFILES);
+      setUsers(prev => prev.length > 0 ? prev : DEFAULT_USERS);
       setSyncStatus('error');
     } finally {
       setIsLoading(false);
@@ -311,6 +329,41 @@ const App: React.FC = () => {
   }, [apiBase]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Otomatis pilih OLT pertama jika belum ada yang terpilih
+  useEffect(() => {
+    const keys = Object.keys(oltConfigs);
+    if (keys.length > 0 && (!selectedOLT || !oltConfigs[selectedOLT])) {
+      const firstOLT = keys[0];
+      setSelectedOLT(firstOLT);
+      const subKeys = Object.keys(oltConfigs[firstOLT]?.subtabs || {});
+      if (subKeys.length > 0) {
+        setSelectedSub(subKeys[0]);
+      }
+    }
+  }, [oltConfigs, selectedOLT]);
+
+  // Otomatis pilih Area pertama ketika OLT berganti
+  useEffect(() => {
+    if (selectedOLT && oltConfigs[selectedOLT]) {
+      const subKeys = Object.keys(oltConfigs[selectedOLT]?.subtabs || {});
+      if (subKeys.length > 0 && (!selectedSub || !oltConfigs[selectedOLT]?.subtabs?.[selectedSub])) {
+        setSelectedSub(subKeys[0]);
+      }
+    }
+  }, [selectedOLT, oltConfigs, selectedSub]);
+
+  // Otomatis isi profile dari konfigurasi area jika kosong
+  useEffect(() => {
+    if (selectedOLT && selectedSub && oltConfigs[selectedOLT]?.subtabs?.[selectedSub]) {
+      const cfg = oltConfigs[selectedOLT].subtabs[selectedSub];
+      if (cfg.speedProfile && cfg.speedProfile.trim()) {
+        setProfile(cfg.speedProfile);
+      } else if (!profile && speedProfiles.length > 0) {
+        setProfile(speedProfiles[0]);
+      }
+    }
+  }, [selectedOLT, selectedSub, oltConfigs, speedProfiles]);
 
   const saveToServer = useCallback(async (configs: any, tpls: any, shortcuts: any, profilesOpt?: string[], usersOpt?: User[]) => {
     setSyncStatus('syncing');
@@ -383,13 +436,83 @@ const App: React.FC = () => {
     }, 0);
   };
 
+  const handleLocalCliInput = useCallback((data: string, term: any) => {
+    if (!term) return;
+    if (data === '\r') {
+      term.write('\r\n');
+      const line = localCliBufferRef.current.trim();
+      localCliBufferRef.current = '';
+
+      if (line.length === 0) {
+        term.write(`${localCliPromptRef.current} `);
+        return;
+      }
+
+      if (line.startsWith('show gpon onu uncfg')) {
+        term.writeln('OnuIndex              Sn                  State');
+        term.writeln('--------------------------------------------------');
+        term.writeln('gpon-onu_1/1/1:1      ZTEGC1234567        ready');
+        term.writeln('gpon-onu_1/1/1:2      ZTEGC89ABCDE        ready');
+      } else if (line.startsWith('show gpon onu state')) {
+        term.writeln('OnuIndex          AdminState  OmciState    OpmState');
+        term.writeln('--------------------------------------------------');
+        term.writeln('gpon-onu_1/1/1:1  enable      enable       Working');
+        term.writeln('gpon-onu_1/1/1:2  enable      enable       Working');
+      } else if (line.startsWith('show gpon onu detail-info') || line.startsWith('show pon power')) {
+        term.writeln('Rx optical power: -19.45 dBm');
+        term.writeln('Tx optical power: +2.34 dBm');
+        term.writeln('Laser bias current: 15.2 mA');
+        term.writeln('Supply voltage: 3.28 V');
+        term.writeln('Temperature: 42.5 C');
+        term.writeln('Status: Normal Optical Link');
+      } else if (line.startsWith('show running-config') || line.startsWith('show onu running')) {
+        term.writeln('interface gpon-onu_1/1/1:1');
+        term.writeln('  name ODP-DYG-01_user01');
+        term.writeln('  tcont 1 name INET profile INTERNET_50M');
+        term.writeln('  gemport 1 name INET tcont 1');
+        term.writeln('  service-port 1 vport 1 user-vlan 1010 vlan 1010');
+        term.writeln('!');
+      } else if (line.startsWith('conf t') || line === 'configure terminal') {
+        localCliPromptRef.current = 'ZXHN-C320(config)#';
+      } else if (line.startsWith('interface gpon-onu') || line.startsWith('interface gpon-olt')) {
+        localCliPromptRef.current = 'ZXHN-C320(config-if)#';
+      } else if (line.startsWith('pon-onu-mng')) {
+        localCliPromptRef.current = 'ZXHN-C320(gpon-onu-mng)#';
+      } else if (line === 'exit') {
+        if (localCliPromptRef.current.includes('mng') || localCliPromptRef.current.includes('if')) {
+          localCliPromptRef.current = 'ZXHN-C320(config)#';
+        } else if (localCliPromptRef.current.includes('config')) {
+          localCliPromptRef.current = 'ZXHN-C320#';
+        } else {
+          localCliPromptRef.current = 'ZXHN-C320>';
+        }
+      } else if (line.startsWith('write')) {
+        term.writeln('Building configuration...');
+        term.writeln('[OK]');
+      } else {
+        term.writeln(`% Command executed: ${line}`);
+      }
+
+      term.write(`${localCliPromptRef.current} `);
+    } else if (data === '\u007F' || data === '\b') {
+      if (localCliBufferRef.current.length > 0) {
+        localCliBufferRef.current = localCliBufferRef.current.slice(0, -1);
+        term.write('\b \b');
+      }
+    } else if (data >= ' ' || data === '\t') {
+      localCliBufferRef.current += data;
+      term.write(data);
+    }
+  }, []);
+
   const disconnectTerminal = useCallback(() => {
     if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
-        setIsTelnetConnected(false);
-        setIsTelnetConnecting(false);
     }
+    isLocalSimulationRef.current = false;
+    setIsTelnetConnected(false);
+    setIsTelnetConnecting(false);
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
   }, []);
 
@@ -431,17 +554,20 @@ const App: React.FC = () => {
       term.onData((data: string) => {
         resetIdleTimer();
         const ws = wsRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (data === '\r') {
-          term.write('\r\n');
-          ws.send(JSON.stringify({ type: 'input', data: '\r' }));
-        } else {
-          if (stateRef.current === 'USERNAME') term.write(data);
-          ws.send(JSON.stringify({ type: 'input', data }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          if (data === '\r') {
+            term.write('\r\n');
+            ws.send(JSON.stringify({ type: 'input', data: '\r' }));
+          } else {
+            if (stateRef.current === 'USERNAME') term.write(data);
+            ws.send(JSON.stringify({ type: 'input', data }));
+          }
+        } else if (isLocalSimulationRef.current) {
+          handleLocalCliInput(data, term);
         }
       });
     }
-  }, [terminalFontSize, resetIdleTimer]);
+  }, [terminalFontSize, resetIdleTimer, handleLocalCliInput]);
 
   useEffect(() => {
     if (activeRightTab === 'telnet' && activeNav === 'generator') {
@@ -754,19 +880,24 @@ const App: React.FC = () => {
 
     try {
       const res = await fetch(`${apiBase}/api/test-connection?host=${encodeURIComponent(targetHost)}&port=${targetPort}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error(`Server tidak mengembalikan respon JSON (${res.status} ${res.statusText}). Pastikan backend server.ts berjalan di port ini.`);
+      }
       const data = await res.json();
       if (xtermRef.current) {
         if (data.reachable) {
           xtermRef.current.writeln(`\x1b[1;32m✓ ${data.message}\x1b[0m`);
         } else {
           xtermRef.current.writeln(`\x1b[1;31m✗ ${data.message}\x1b[0m`);
-          xtermRef.current.writeln(`\x1b[33mTips: Jika host OLT berada di jaringan lokal/private, server ini belum terhubung ke VPN/IP tersebut.\x1b[0m`);
+          xtermRef.current.writeln(`\x1b[33mTips: Jika host OLT berada di jaringan lokal/private (${targetHost}), server ini belum terhubung ke VPN/IP tersebut.\x1b[0m`);
           xtermRef.current.writeln(`\x1b[36mAnda dapat mengaktifkan [Mode Simulasi] di samping untuk menguji CLI interaktif langsung sekarang!\x1b[0m\r\n`);
         }
       }
     } catch (err: any) {
       if (xtermRef.current) {
-        xtermRef.current.writeln(`\x1b[1;31m✗ Gagal tes koneksi: ${err.message}\x1b[0m\r\n`);
+        xtermRef.current.writeln(`\x1b[1;31m✗ Gagal tes koneksi: ${err.message}\x1b[0m`);
+        xtermRef.current.writeln(`\x1b[33mCatatan: Jika Anda sedang menguji hasil build, gunakan perintah 'npm start' atau 'npm run preview' agar backend server.ts aktif.\x1b[0m\r\n`);
       }
     } finally {
       setIsTestingPing(false);
@@ -779,7 +910,7 @@ const App: React.FC = () => {
   };
 
   const sendCommandToTerminal = (scriptRaw: string) => {
-    if (!isTelnetConnected || !wsRef.current) return alert("Terminal offline! Klik [Connect] terlebih dahulu.");
+    if (!isTelnetConnected) return alert("Terminal offline! Klik [Connect] terlebih dahulu.");
     const lockCommands = Object.entries(locks).map(([n, l]) => `interface eth eth_0/${n} state ${l ? 'lock' : 'unlock'}`).join('\n');
     const data: ScriptData = { slot, port, onu, sn, odp, profile, vlan: currentCfg?.vlan || 0, vlanProfile: currentCfg?.vlanProfile || '', pppoe: (currentCfg?.ppp_prefix || '') + pppSuffix, locks: lockCommands, vlanLines: '' };
     let processed = String(scriptRaw);
@@ -787,6 +918,20 @@ const App: React.FC = () => {
     
     if (xtermRef.current) {
       xtermRef.current.write(`\r\n\x1b[1;33m[SENDING COMMANDS...]\x1b[0m\r\n`);
+    }
+
+    if (isLocalSimulationRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      // Eksekusi simulasi CLI lokal
+      processed.split('\n').forEach(line => {
+        if (line.trim().length > 0) {
+          xtermRef.current?.write(`\x1b[1;36m>> ${line}\x1b[0m\r\n`);
+          localCliBufferRef.current = line;
+          handleLocalCliInput('\r', xtermRef.current);
+        }
+      });
+      setShowPasteConfirm(false);
+      resetIdleTimer();
+      return;
     }
 
     processed.split('\n').forEach(line => { 
@@ -810,6 +955,12 @@ const App: React.FC = () => {
 
     setIsTelnetConnecting(true);
 
+    if (activeMode === 'simulation') {
+      isLocalSimulationRef.current = true;
+    } else {
+      isLocalSimulationRef.current = false;
+    }
+
     let wsUrl = '';
     if (apiBase && apiBase.startsWith('http')) {
       wsUrl = apiBase.replace(/^http/, 'ws');
@@ -819,6 +970,16 @@ const App: React.FC = () => {
     }
 
     if (!wsUrl) {
+      if (activeMode === 'simulation') {
+        setIsTelnetConnecting(false);
+        setIsTelnetConnected(true);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[1;32m[CONNECTED: MODE SIMULASI CLI LOKAL OLT ZTE C320]\x1b[0m");
+          xtermRef.current.writeln("\x1b[90mKetik perintah OLT seperti 'show gpon onu uncfg', 'show gpon onu state', 'conf t', 'write'.\x1b[0m\r\n");
+          xtermRef.current.write(`${localCliPromptRef.current} `);
+        }
+        return;
+      }
       setIsTelnetConnecting(false);
       alert("URL server WebSocket tidak valid!");
       return;
@@ -837,6 +998,7 @@ const App: React.FC = () => {
       const targetPass = terminalPass || (selectedOLT ? oltConfigs[selectedOLT]?.password : '');
 
       ws.onopen = () => {
+        isLocalSimulationRef.current = false;
         ws.send(JSON.stringify({
           type: 'connect',
           ip: currentOltIP || '10.123.123.15',
@@ -872,25 +1034,48 @@ const App: React.FC = () => {
 
       ws.onerror = () => {
         setIsTelnetConnecting(false);
-        setIsTelnetConnected(false);
-        if (xtermRef.current) {
-          xtermRef.current.writeln("\r\n\x1b[1;31m[WEBSOCKET ERROR: Gagal terhubung ke backend]\x1b[0m");
-          xtermRef.current.writeln("\x1b[33mPastikan backend 'server.ts' berjalan atau beralih ke Mode Simulasi.\x1b[0m\r\n");
+        if (activeMode === 'simulation') {
+          isLocalSimulationRef.current = true;
+          setIsTelnetConnected(true);
+          if (xtermRef.current) {
+            xtermRef.current.writeln("\r\n\x1b[1;33m[INFO: Backend WebSocket offline, mengaktifkan CLI Simulasi Lokal]\x1b[0m");
+            xtermRef.current.writeln("\x1b[1;32m[CONNECTED: MODE SIMULASI CLI OLT ZTE C320]\x1b[0m");
+            xtermRef.current.writeln("\x1b[90mKetik perintah OLT seperti 'show gpon onu uncfg', 'show gpon onu state', 'conf t', 'write'.\x1b[0m\r\n");
+            xtermRef.current.write(`${localCliPromptRef.current} `);
+          }
+        } else {
+          setIsTelnetConnected(false);
+          if (xtermRef.current) {
+            xtermRef.current.writeln("\r\n\x1b[1;31m[WEBSOCKET ERROR: Gagal terhubung ke backend server.ts]\x1b[0m");
+            xtermRef.current.writeln("\x1b[33mPastikan backend 'server.ts' berjalan (jalankan 'npm start' atau 'npm run preview').\x1b[0m");
+            xtermRef.current.writeln("\x1b[36mAtau aktifkan [Mode Simulasi] di samping untuk langsung mencoba CLI tanpa jaringan OLT!\x1b[0m\r\n");
+          }
         }
       };
 
       ws.onclose = () => {
         setIsTelnetConnecting(false);
-        setIsTelnetConnected(false);
-        if (xtermRef.current) {
-          xtermRef.current.writeln("\r\n\x1b[31m[SESI TERMINAL DITUTUP / OFFLINE]\x1b[0m");
+        if (!isLocalSimulationRef.current) {
+          setIsTelnetConnected(false);
+          if (xtermRef.current) {
+            xtermRef.current.writeln("\r\n\x1b[31m[SESI TERMINAL DITUTUP / OFFLINE]\x1b[0m");
+          }
         }
       };
     } catch (e: any) {
       setIsTelnetConnecting(false);
-      setIsTelnetConnected(false);
-      if (xtermRef.current) {
-        xtermRef.current.writeln(`\r\n\x1b[31m[KONEKSI GAGAL: ${e.message}]\x1b[0m\r\n`);
+      if (activeMode === 'simulation') {
+        isLocalSimulationRef.current = true;
+        setIsTelnetConnected(true);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[1;32m[CONNECTED: MODE SIMULASI CLI LOKAL OLT ZTE C320]\x1b[0m\r\n");
+          xtermRef.current.write(`${localCliPromptRef.current} `);
+        }
+      } else {
+        setIsTelnetConnected(false);
+        if (xtermRef.current) {
+          xtermRef.current.writeln(`\r\n\x1b[31m[KONEKSI GAGAL: ${e.message}]\x1b[0m\r\n`);
+        }
       }
     }
   };
