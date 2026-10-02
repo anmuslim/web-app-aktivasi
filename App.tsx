@@ -28,7 +28,7 @@ import {
   Unlock,
   Radio,
   RotateCw
-} from 'lucide-react';
+} from './Icons.tsx';
 import {
   INITIAL_OLT_CONFIG,
   INITIAL_TEMPLATES,
