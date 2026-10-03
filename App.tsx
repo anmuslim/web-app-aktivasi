@@ -133,7 +133,6 @@ const App: React.FC = () => {
   const [terminalFontSize, setTerminalFontSize] = useState(11);
   const [terminalProtocol, setTerminalProtocol] = useState<'telnet' | 'ssh'>('telnet');
   const [terminalPort, setTerminalPort] = useState<string>('23');
-  const [terminalMode, setTerminalMode] = useState<'real' | 'simulation'>('real');
   const [terminalUser, setTerminalUser] = useState<string>('');
   const [terminalPass, setTerminalPass] = useState<string>('');
   const [isTestingPing, setIsTestingPing] = useState(false);
@@ -182,11 +181,6 @@ const App: React.FC = () => {
   const [profile, setProfile] = useState('INTERNET_20M');
   const [locks, setLocks] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true, 4: true });
   const [copySuccess, setCopySuccess] = useState(false);
-
-  // Local CLI simulation state refs
-  const localCliBufferRef = useRef('');
-  const localCliPromptRef = useRef('ZXHN-C320#');
-  const isLocalSimulationRef = useRef(false);
 
   // Profile Search Dropdown States
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -502,81 +496,11 @@ const App: React.FC = () => {
     }, 0);
   };
 
-  const handleLocalCliInput = useCallback((data: string, term: any) => {
-    if (!term) return;
-    if (data === '\r') {
-      term.write('\r\n');
-      const line = localCliBufferRef.current.trim();
-      localCliBufferRef.current = '';
-
-      if (line.length === 0) {
-        term.write(`${localCliPromptRef.current} `);
-        return;
-      }
-
-      if (line.startsWith('show gpon onu uncfg')) {
-        term.writeln('OnuIndex              Sn                  State');
-        term.writeln('--------------------------------------------------');
-        term.writeln('gpon-onu_1/1/1:1      ZTEGC1234567        ready');
-        term.writeln('gpon-onu_1/1/1:2      ZTEGC89ABCDE        ready');
-      } else if (line.startsWith('show gpon onu state')) {
-        term.writeln('OnuIndex          AdminState  OmciState    OpmState');
-        term.writeln('--------------------------------------------------');
-        term.writeln('gpon-onu_1/1/1:1  enable      enable       Working');
-        term.writeln('gpon-onu_1/1/1:2  enable      enable       Working');
-      } else if (line.startsWith('show gpon onu detail-info') || line.startsWith('show pon power')) {
-        term.writeln('Rx optical power: -19.45 dBm');
-        term.writeln('Tx optical power: +2.34 dBm');
-        term.writeln('Laser bias current: 15.2 mA');
-        term.writeln('Supply voltage: 3.28 V');
-        term.writeln('Temperature: 42.5 C');
-        term.writeln('Status: Normal Optical Link');
-      } else if (line.startsWith('show running-config') || line.startsWith('show onu running')) {
-        term.writeln('interface gpon-onu_1/1/1:1');
-        term.writeln('  name ODP-DYG-01_user01');
-        term.writeln('  tcont 1 name INET profile INTERNET_50M');
-        term.writeln('  gemport 1 name INET tcont 1');
-        term.writeln('  service-port 1 vport 1 user-vlan 1010 vlan 1010');
-        term.writeln('!');
-      } else if (line.startsWith('conf t') || line === 'configure terminal') {
-        localCliPromptRef.current = 'ZXHN-C320(config)#';
-      } else if (line.startsWith('interface gpon-onu') || line.startsWith('interface gpon-olt')) {
-        localCliPromptRef.current = 'ZXHN-C320(config-if)#';
-      } else if (line.startsWith('pon-onu-mng')) {
-        localCliPromptRef.current = 'ZXHN-C320(gpon-onu-mng)#';
-      } else if (line === 'exit') {
-        if (localCliPromptRef.current.includes('mng') || localCliPromptRef.current.includes('if')) {
-          localCliPromptRef.current = 'ZXHN-C320(config)#';
-        } else if (localCliPromptRef.current.includes('config')) {
-          localCliPromptRef.current = 'ZXHN-C320#';
-        } else {
-          localCliPromptRef.current = 'ZXHN-C320>';
-        }
-      } else if (line.startsWith('write')) {
-        term.writeln('Building configuration...');
-        term.writeln('[OK]');
-      } else {
-        term.writeln(`% Command executed: ${line}`);
-      }
-
-      term.write(`${localCliPromptRef.current} `);
-    } else if (data === '\u007F' || data === '\b') {
-      if (localCliBufferRef.current.length > 0) {
-        localCliBufferRef.current = localCliBufferRef.current.slice(0, -1);
-        term.write('\b \b');
-      }
-    } else if (data >= ' ' || data === '\t') {
-      localCliBufferRef.current += data;
-      term.write(data);
-    }
-  }, []);
-
   const disconnectTerminal = useCallback(() => {
     if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
     }
-    isLocalSimulationRef.current = false;
     setIsTelnetConnected(false);
     setIsTelnetConnecting(false);
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
@@ -622,12 +546,10 @@ const App: React.FC = () => {
             if (stateRef.current === 'USERNAME') term.write(data);
             ws.send(JSON.stringify({ type: 'input', data }));
           }
-        } else if (isLocalSimulationRef.current) {
-          handleLocalCliInput(data, term);
         }
       });
     }
-  }, [terminalFontSize, resetIdleTimer, handleLocalCliInput]);
+  }, [terminalFontSize, resetIdleTimer]);
 
   useEffect(() => {
     if (activeRightTab === 'telnet' && activeNav === 'generator') {
@@ -1102,13 +1024,13 @@ const App: React.FC = () => {
   };
 
   const testConnection = async () => {
-    if (!currentOltIP && terminalMode === 'real') return alert("Pilih OLT terlebih dahulu!");
+    if (!currentOltIP) return alert("Pilih OLT terlebih dahulu!");
     setIsTestingPing(true);
     const targetPort = terminalPort || (terminalProtocol === 'ssh' ? '22' : '23');
     const targetHost = currentOltIP || '10.123.123.15';
 
     if (xtermRef.current) {
-      xtermRef.current.write(`\r\n\x1b[1;36m[DIAGNOSTIK: Memeriksa konektivitas ke ${targetHost}:${targetPort}...]\x1b[0m\r\n`);
+      xtermRef.current.write(`\r\n\x1b[1;36m[DIAGNOSTIK: Memeriksa konektivitas ke Real OLT ${targetHost}:${targetPort}...]\x1b[0m\r\n`);
     }
 
     try {
@@ -1123,14 +1045,13 @@ const App: React.FC = () => {
           xtermRef.current.writeln(`\x1b[1;32m✓ ${data.message}\x1b[0m`);
         } else {
           xtermRef.current.writeln(`\x1b[1;31m✗ ${data.message}\x1b[0m`);
-          xtermRef.current.writeln(`\x1b[33mTips: Jika host OLT berada di jaringan lokal/private (${targetHost}), server ini belum terhubung ke VPN/IP tersebut.\x1b[0m`);
-          xtermRef.current.writeln(`\x1b[36mAnda dapat mengaktifkan [Mode Simulasi] di samping untuk menguji CLI interaktif langsung sekarang!\x1b[0m\r\n`);
+          xtermRef.current.writeln(`\x1b[33mTips: Pastikan server memiliki rute ke IP Real OLT (${targetHost}) atau VPN aktif.\x1b[0m\r\n`);
         }
       }
     } catch (err: any) {
       if (xtermRef.current) {
         xtermRef.current.writeln(`\x1b[1;31m✗ Gagal tes koneksi: ${err.message}\x1b[0m`);
-        xtermRef.current.writeln(`\x1b[33mCatatan: Jika Anda sedang menguji hasil build, gunakan perintah 'npm start' atau 'npm run preview' agar backend server.ts aktif.\x1b[0m\r\n`);
+        xtermRef.current.writeln(`\x1b[33mCatatan: Pastikan backend server.ts aktif.\x1b[0m\r\n`);
       }
     } finally {
       setIsTestingPing(false);
@@ -1143,27 +1064,18 @@ const App: React.FC = () => {
   };
 
   const sendCommandToTerminal = (scriptRaw: string) => {
-    if (!isTelnetConnected) return alert("Terminal offline! Klik [Connect] terlebih dahulu.");
+    if (!isTelnetConnected) return alert("Terminal offline! Hubungkan ke Real OLT dengan klik [Connect] terlebih dahulu.");
     const lockCommands = Object.entries(locks).map(([n, l]) => `interface eth eth_0/${n} state ${l ? 'lock' : 'unlock'}`).join('\n');
     const data: ScriptData = { slot, port, onu, sn, odp, profile, vlan: currentCfg?.vlan || 0, vlanProfile: currentCfg?.vlanProfile || '', pppoe: (currentCfg?.ppp_prefix || '') + pppSuffix, locks: lockCommands, vlanLines: '' };
     let processed = String(scriptRaw);
     Object.keys(data).forEach(k => { processed = processed.replace(new RegExp(`{${k}}`, 'g'), String((data as any)[k])); });
     
     if (xtermRef.current) {
-      xtermRef.current.write(`\r\n\x1b[1;33m[SENDING COMMANDS...]\x1b[0m\r\n`);
+      xtermRef.current.write(`\r\n\x1b[1;33m[MENGIRIM PERINTAH KE REAL OLT...]\x1b[0m\r\n`);
     }
 
-    if (isLocalSimulationRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      // Eksekusi simulasi CLI lokal
-      processed.split('\n').forEach(line => {
-        if (line.trim().length > 0) {
-          xtermRef.current?.write(`\x1b[1;36m>> ${line}\x1b[0m\r\n`);
-          localCliBufferRef.current = line;
-          handleLocalCliInput('\r', xtermRef.current);
-        }
-      });
-      setShowPasteConfirm(false);
-      resetIdleTimer();
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      alert("Koneksi terminal ke OLT terputus!");
       return;
     }
 
@@ -1177,22 +1089,13 @@ const App: React.FC = () => {
     resetIdleTimer();
   };
 
-  const connectTerminal = (overrideMode?: 'real' | 'simulation') => {
-    const activeMode = overrideMode || terminalMode;
-    if (overrideMode) setTerminalMode(overrideMode);
-
-    if (!currentOltIP && activeMode === 'real') {
-      alert("Pilih OLT di panel sebelah kiri terlebih dahulu atau aktifkan [Mode Simulasi]!");
+  const connectTerminal = () => {
+    if (!currentOltIP) {
+      alert("Pilih Node OLT di panel sebelah kiri terlebih dahulu!");
       return;
     }
 
     setIsTelnetConnecting(true);
-
-    if (activeMode === 'simulation') {
-      isLocalSimulationRef.current = true;
-    } else {
-      isLocalSimulationRef.current = false;
-    }
 
     let wsUrl = '';
     if (apiBase && apiBase.startsWith('http')) {
@@ -1203,16 +1106,6 @@ const App: React.FC = () => {
     }
 
     if (!wsUrl) {
-      if (activeMode === 'simulation') {
-        setIsTelnetConnecting(false);
-        setIsTelnetConnected(true);
-        if (xtermRef.current) {
-          xtermRef.current.writeln("\r\n\x1b[1;32m[CONNECTED: MODE SIMULASI CLI LOKAL OLT ZTE C320]\x1b[0m");
-          xtermRef.current.writeln("\x1b[90mKetik perintah OLT seperti 'show gpon onu uncfg', 'show gpon onu state', 'conf t', 'write'.\x1b[0m\r\n");
-          xtermRef.current.write(`${localCliPromptRef.current} `);
-        }
-        return;
-      }
       setIsTelnetConnecting(false);
       alert("URL server WebSocket tidak valid!");
       return;
@@ -1231,15 +1124,13 @@ const App: React.FC = () => {
       const targetPass = terminalPass || (selectedOLT ? oltConfigs[selectedOLT]?.password : '');
 
       ws.onopen = () => {
-        isLocalSimulationRef.current = false;
         ws.send(JSON.stringify({
           type: 'connect',
-          ip: currentOltIP || '10.123.123.15',
+          ip: currentOltIP,
           protocol: terminalProtocol,
           port: targetPort,
           user: targetUser,
-          password: targetPass,
-          mode: activeMode
+          password: targetPass
         }));
         resetIdleTimer();
       };
@@ -1267,48 +1158,25 @@ const App: React.FC = () => {
 
       ws.onerror = () => {
         setIsTelnetConnecting(false);
-        if (activeMode === 'simulation') {
-          isLocalSimulationRef.current = true;
-          setIsTelnetConnected(true);
-          if (xtermRef.current) {
-            xtermRef.current.writeln("\r\n\x1b[1;33m[INFO: Backend WebSocket offline, mengaktifkan CLI Simulasi Lokal]\x1b[0m");
-            xtermRef.current.writeln("\x1b[1;32m[CONNECTED: MODE SIMULASI CLI OLT ZTE C320]\x1b[0m");
-            xtermRef.current.writeln("\x1b[90mKetik perintah OLT seperti 'show gpon onu uncfg', 'show gpon onu state', 'conf t', 'write'.\x1b[0m\r\n");
-            xtermRef.current.write(`${localCliPromptRef.current} `);
-          }
-        } else {
-          setIsTelnetConnected(false);
-          if (xtermRef.current) {
-            xtermRef.current.writeln("\r\n\x1b[1;31m[WEBSOCKET ERROR: Gagal terhubung ke backend server.ts]\x1b[0m");
-            xtermRef.current.writeln("\x1b[33mPastikan backend 'server.ts' berjalan (jalankan 'npm start' atau 'npm run preview').\x1b[0m");
-            xtermRef.current.writeln("\x1b[36mAtau aktifkan [Mode Simulasi] di samping untuk langsung mencoba CLI tanpa jaringan OLT!\x1b[0m\r\n");
-          }
+        setIsTelnetConnected(false);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[1;31m[WEBSOCKET ERROR: Gagal terhubung ke backend server]\x1b[0m");
+          xtermRef.current.writeln("\x1b[33mPastikan backend 'server.ts' berjalan dan IP OLT dapat dijangkau.\x1b[0m\r\n");
         }
       };
 
       ws.onclose = () => {
         setIsTelnetConnecting(false);
-        if (!isLocalSimulationRef.current) {
-          setIsTelnetConnected(false);
-          if (xtermRef.current) {
-            xtermRef.current.writeln("\r\n\x1b[31m[SESI TERMINAL DITUTUP / OFFLINE]\x1b[0m");
-          }
+        setIsTelnetConnected(false);
+        if (xtermRef.current) {
+          xtermRef.current.writeln("\r\n\x1b[31m[SESI TERMINAL REAL OLT DITUTUP / OFFLINE]\x1b[0m\r\n");
         }
       };
     } catch (e: any) {
       setIsTelnetConnecting(false);
-      if (activeMode === 'simulation') {
-        isLocalSimulationRef.current = true;
-        setIsTelnetConnected(true);
-        if (xtermRef.current) {
-          xtermRef.current.writeln("\r\n\x1b[1;32m[CONNECTED: MODE SIMULASI CLI LOKAL OLT ZTE C320]\x1b[0m\r\n");
-          xtermRef.current.write(`${localCliPromptRef.current} `);
-        }
-      } else {
-        setIsTelnetConnected(false);
-        if (xtermRef.current) {
-          xtermRef.current.writeln(`\r\n\x1b[31m[KONEKSI GAGAL: ${e.message}]\x1b[0m\r\n`);
-        }
+      setIsTelnetConnected(false);
+      if (xtermRef.current) {
+        xtermRef.current.writeln(`\r\n\x1b[31m[KONEKSI GAGAL: ${e.message}]\x1b[0m\r\n`);
       }
     }
   };
@@ -2312,58 +2180,26 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-1.5 truncate">
                           <span className="text-[11px] font-bold text-emerald-400 uppercase truncate">
                             {isTelnetConnected
-                              ? `${terminalMode === 'simulation' ? '[SIMULASI] ' : ''}OLT: ${selectedOLT || currentOltIP || '10.123.123.15'}`
+                              ? `REAL OLT: ${selectedOLT || currentOltIP || '10.123.123.15'}`
                               : isTelnetConnecting
-                              ? 'MENYAMBUNGKAN...'
-                              : 'TERMINAL OFFLINE'}
+                              ? 'MENYAMBUNGKAN KE REAL OLT...'
+                              : 'TERMINAL REAL OLT OFFLINE'}
                           </span>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                            terminalMode === 'simulation'
-                              ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50'
-                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                            {terminalProtocol.toUpperCase()} (PORT {terminalPort})
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${
+                            isTelnetConnected
+                              ? 'bg-emerald-950/70 text-emerald-400 border border-emerald-800/60'
+                              : 'bg-cyan-950/70 text-cyan-400 border border-cyan-800/60'
                           }`}>
-                            {terminalMode === 'simulation' ? 'Simulasi' : terminalProtocol.toUpperCase()}
+                            <Server className="w-2.5 h-2.5" />
+                            <span>Real OLT Direct</span>
                           </span>
                         </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {/* Mode Switcher: Simulasi vs Real OLT */}
-                        <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isTelnetConnected) disconnectTerminal();
-                              setTerminalMode('real');
-                            }}
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all flex items-center gap-1 ${
-                              terminalMode === 'real'
-                                ? 'bg-cyan-600 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-white'
-                            }`}
-                            title="Hubungkan langsung ke IP OLT di jaringan lokal/VPN"
-                          >
-                            <Server className="w-2.5 h-2.5" />
-                            <span>Real OLT</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isTelnetConnected) disconnectTerminal();
-                              setTerminalMode('simulation');
-                            }}
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all flex items-center gap-1 ${
-                              terminalMode === 'simulation'
-                                ? 'bg-purple-600 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-white'
-                            }`}
-                            title="Mode demo/uji coba template tanpa perlu terhubung ke OLT fisik"
-                          >
-                            <Terminal className="w-2.5 h-2.5" />
-                            <span>Simulasi</span>
-                          </button>
-                        </div>
-
                         {/* Settings Button (Port, Protocol, Kredensial) */}
                         <button
                           type="button"
@@ -2373,25 +2209,23 @@ const App: React.FC = () => {
                               ? 'bg-slate-700 border-cyan-500 text-cyan-300'
                               : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
                           }`}
-                          title="Pengaturan Port & Kredensial Terminal"
+                          title="Pengaturan Port & Kredensial Real OLT"
                         >
                           <Settings2 className="w-3 h-3" />
-                          <span>Opsi</span>
+                          <span>Opsi OLT</span>
                         </button>
 
-                        {/* Ping / Cek OLT */}
-                        {terminalMode === 'real' && (
-                          <button
-                            type="button"
-                            onClick={testConnection}
-                            disabled={isTestingPing}
-                            className="px-2 py-1 bg-slate-800 border border-slate-700 text-cyan-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1"
-                            title="Cek apakah IP OLT dapat dijangkau dari server"
-                          >
-                            <Radio className="w-3 h-3" />
-                            <span>{isTestingPing ? 'Cek...' : 'Ping'}</span>
-                          </button>
-                        )}
+                        {/* Ping / Cek Real OLT */}
+                        <button
+                          type="button"
+                          onClick={testConnection}
+                          disabled={isTestingPing}
+                          className="px-2 py-1 bg-slate-800 border border-slate-700 text-cyan-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1"
+                          title="Cek apakah IP Real OLT dapat dijangkau dari server"
+                        >
+                          <Radio className="w-3 h-3" />
+                          <span>{isTestingPing ? 'Cek...' : 'Ping'}</span>
+                        </button>
 
                         {/* Clear Terminal */}
                         <button
@@ -2409,7 +2243,7 @@ const App: React.FC = () => {
                           type="button"
                           onClick={loginOLTAuto}
                           disabled={!isTelnetConnected}
-                          title="Kirim username & password otomatis ke OLT"
+                          title="Kirim username & password otomatis ke Real OLT"
                           className="px-2.5 py-1 bg-slate-800 border border-slate-700 text-amber-400 rounded text-[9px] font-bold uppercase hover:bg-slate-700 disabled:opacity-30 flex items-center gap-1"
                         >
                           <KeyRound className="w-3 h-3" />
@@ -2513,28 +2347,6 @@ const App: React.FC = () => {
                             className="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                           />
                         </div>
-                      </div>
-                    )}
-
-                    {/* Offline / Help Banner for Quick Simulation Switching */}
-                    {!isTelnetConnected && !isTelnetConnecting && (
-                      <div className="px-3 py-1.5 bg-[#0a1120] border-b border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 gap-2">
-                        <span>
-                          {terminalMode === 'real'
-                            ? `💡 OLT (${currentOltIP || '10.x.x.x'}) di jaringan private belum bisa dijangkau?`
-                            : '🕹️ Mode Simulasi aktif: Anda dapat menguji perintah CLI OLT tanpa perangkat fisik.'}
-                        </span>
-                        {terminalMode === 'real' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              connectTerminal('simulation');
-                            }}
-                            className="text-[10px] font-bold text-purple-400 hover:text-purple-300 underline uppercase shrink-0"
-                          >
-                            Beralih ke Mode Simulasi & Sambungkan →
-                          </button>
-                        )}
                       </div>
                     )}
 

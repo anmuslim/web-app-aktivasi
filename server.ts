@@ -342,16 +342,13 @@ function processTelnetStream(socket: net.Socket, chunk: Buffer, onData: (text: s
 wss.on('connection', (ws) => {
   let connection: any = null;
   let type = 'telnet';
-  let isSimulated = false;
-  let simulatedPrompt = 'ZXHN-C320#';
-  let simulatedBuffer = '';
   let currentTerminalState = 'NORMAL';
 
   ws.on('message', (msg) => {
     try {
       const payload = JSON.parse(msg.toString());
       if (payload.type === 'connect') {
-        const { ip, protocol = 'telnet', port, user, password, mode } = payload;
+        const { ip, protocol = 'telnet', port, user, password } = payload;
         type = protocol;
 
         if (connection) {
@@ -360,28 +357,10 @@ wss.on('connection', (ws) => {
           connection = null;
         }
 
-        // SIMULATION MODE
-        if (mode === 'simulation') {
-          isSimulated = true;
-          ws.send(JSON.stringify({
-            type: 'connection_status',
-            connected: true,
-            mode: 'simulation'
-          }));
-          ws.send(JSON.stringify({
-            type: 'status',
-            data: `\r\n\x1b[1;32m[CONNECTED: MODE SIMULASI CLI OLT ZTE C320 (${ip || '10.123.123.15'})]\x1b[0m\r\n` +
-                  `\x1b[1;33mTerminal siap menerima perintah CLI OLT.\x1b[0m\r\n\r\n` +
-                  `${simulatedPrompt} `
-          }));
-          return;
-        }
-
-        isSimulated = false;
         const targetPort = port ? parseInt(port, 10) : (protocol === 'ssh' ? 22 : 23);
         ws.send(JSON.stringify({
           type: 'status',
-          data: `\r\n\x1b[1;36m[MENGHUBUNGKAN KE ${ip}:${targetPort} VIA ${protocol.toUpperCase()}...]\x1b[0m\r\n`
+          data: `\r\n\x1b[1;36m[MENGHUBUNGKAN KE REAL OLT ${ip}:${targetPort} VIA ${protocol.toUpperCase()}...]\x1b[0m\r\n`
         }));
 
         const handleIncomingData = (text: string) => {
@@ -404,7 +383,7 @@ wss.on('connection', (ws) => {
                 connected: true,
                 mode: 'ssh'
               }));
-              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;32m[SSH TERHUBUNG KE ${ip}:${targetPort}]\x1b[0m\r\n` }));
+              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;32m[SSH TERHUBUNG KE REAL OLT ${ip}:${targetPort}]\x1b[0m\r\n` }));
             }
             connection.shell({ term: 'xterm-256color' }, (err: any, stream: any) => {
               if (err) {
@@ -426,7 +405,7 @@ wss.on('connection', (ws) => {
               }));
               ws.send(JSON.stringify({
                 type: 'status',
-                data: `\r\n\x1b[1;31m[SSH GAGAL: ${err.message}]\x1b[0m\r\n\x1b[33mTips: Pastikan port 22 terbuka, kredensial benar, dan IP ${ip} dapat dijangkau.\x1b[0m\r\n\x1b[36mGunakan [Mode Simulasi] jika ingin mencoba tanpa koneksi fisik OLT.\x1b[0m\r\n`
+                data: `\r\n\x1b[1;31m[SSH GAGAL: ${err.message}]\x1b[0m\r\n\x1b[33mTips: Pastikan port ${targetPort} terbuka, kredensial OLT benar, dan IP ${ip} dapat dijangkau dari server.\x1b[0m\r\n`
               }));
             }
           }).connect({
@@ -448,8 +427,8 @@ wss.on('connection', (ws) => {
               }));
               ws.send(JSON.stringify({
                 type: 'status',
-                data: `\r\n\x1b[1;31m[TIMEOUT: Gagal terhubung ke ${ip}:${targetPort} dalam 10 detik]\x1b[0m\r\n` +
-                      `\x1b[33mTips: Host '${ip}' tidak merespons. Periksa rute IP/VPN, firewall, atau gunakan [Mode Simulasi] untuk pengujian template.\x1b[0m\r\n`
+                data: `\r\n\x1b[1;31m[TIMEOUT: Gagal terhubung ke Real OLT ${ip}:${targetPort} dalam 10 detik]\x1b[0m\r\n` +
+                      `\x1b[33mTips: Host '${ip}' tidak merespons. Periksa rute IP/VPN, firewall, dan pastikan OLT dalam keadaan aktif.\x1b[0m\r\n`
               }));
             }
             connection.destroy();
@@ -464,7 +443,7 @@ wss.on('connection', (ws) => {
                 connected: true,
                 mode: 'telnet'
               }));
-              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;32m[TELNET TERHUBUNG KE ${ip}:${targetPort}]\x1b[0m\r\n` }));
+              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;32m[TELNET TERHUBUNG KE REAL OLT ${ip}:${targetPort}]\x1b[0m\r\n` }));
             }
             connection.write(Buffer.from([IAC, DONT, ECHO, IAC, WILL, SUPPRESS_GO_AHEAD]));
           });
@@ -479,8 +458,7 @@ wss.on('connection', (ws) => {
               ws.send(JSON.stringify({
                 type: 'status',
                 data: `\r\n\x1b[1;31m[TCP ERROR: ${err.message}]\x1b[0m\r\n` +
-                      `\x1b[33mTips: Host '${ip}' tidak dapat dijangkau dari server ini (${err.code || 'UNREACHABLE'}).\x1b[0m\r\n` +
-                      `\x1b[36mSolusi: Aktifkan [Mode Simulasi] untuk menguji eksekusi CLI OLT secara interaktif.\x1b[0m\r\n`
+                      `\x1b[33mTips: Host '${ip}' tidak dapat dijangkau dari server ini (${err.code || 'UNREACHABLE'}). Periksa konektivitas jaringan OLT.\x1b[0m\r\n`
               }));
             }
           });
@@ -490,76 +468,13 @@ wss.on('connection', (ws) => {
                 type: 'connection_status',
                 connected: false
               }));
-              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;33m[KONEKSI TELNET DITUTUP OLEH OLT / JARINGAN]\x1b[0m\r\n` }));
+              ws.send(JSON.stringify({ type: 'status', data: `\r\n\x1b[1;33m[KONEKSI TELNET REAL OLT DITUTUP OLEH PERANGKAT / JARINGAN]\x1b[0m\r\n` }));
             }
           });
         }
       }
 
       if (payload.type === 'input') {
-        if (isSimulated) {
-          const char = payload.data;
-          if (char === '\r' || char === '\n') {
-            const line = simulatedBuffer.trim();
-            simulatedBuffer = '';
-            let response = '';
-
-            if (line.startsWith('show gpon onu uncfg')) {
-              response = `OnuIndex              Sn                  State\r\n` +
-                         `--------------------------------------------------\r\n` +
-                         `gpon-onu_1/1/1:1      ZTEGC1234567        ready\r\n` +
-                         `gpon-onu_1/1/1:2      ZTEGC89ABCDE        ready\r\n`;
-            } else if (line.startsWith('show gpon onu state')) {
-              response = `OnuIndex          AdminState  OmciState    OpmState\r\n` +
-                         `--------------------------------------------------\r\n` +
-                         `gpon-onu_1/1/1:1  enable      enable       Working\r\n` +
-                         `gpon-onu_1/1/1:2  enable      enable       Working\r\n`;
-            } else if (line.startsWith('show gpon onu detail-info') || line.startsWith('show pon power')) {
-              response = `Rx optical power: -19.45 dBm\r\nTx optical power: +2.34 dBm\r\nLaser bias current: 15.2 mA\r\nSupply voltage: 3.28 V\r\nTemperature: 42.5 C\r\nStatus: Normal Optical Link\r\n`;
-            } else if (line.startsWith('show running-config') || line.startsWith('show onu running')) {
-              response = `interface gpon-onu_1/1/1:1\r\n  name ODP-DYG-01_user01\r\n  tcont 1 name INET profile INTERNET_50M\r\n  gemport 1 name INET tcont 1\r\n  service-port 1 vport 1 user-vlan 1010 vlan 1010\r\n!\r\n`;
-            } else if (line.startsWith('show gpon onu by sn')) {
-              response = `OnuIndex              Sn                  State\r\n--------------------------------------------------\r\ngpon-onu_1/1/1:1      ZTEGC1234567        working\r\n`;
-            } else if (line.startsWith('conf t') || line === 'configure terminal') {
-              simulatedPrompt = 'ZXHN-C320(config)#';
-            } else if (line.startsWith('interface gpon-onu') || line.startsWith('interface gpon-olt')) {
-              simulatedPrompt = 'ZXHN-C320(config-if)#';
-            } else if (line.startsWith('pon-onu-mng')) {
-              simulatedPrompt = 'ZXHN-C320(gpon-onu-mng)#';
-            } else if (line === 'exit') {
-              if (simulatedPrompt.includes('mng') || simulatedPrompt.includes('if')) {
-                simulatedPrompt = 'ZXHN-C320(config)#';
-              } else if (simulatedPrompt.includes('config')) {
-                simulatedPrompt = 'ZXHN-C320#';
-              } else {
-                simulatedPrompt = 'ZXHN-C320>';
-              }
-            } else if (line === 'end') {
-              simulatedPrompt = 'ZXHN-C320#';
-            } else if (line === 'wr' || line === 'write') {
-              response = `Building configuration...\r\n[OK]\r\n`;
-            } else if (line.startsWith('terminal length')) {
-              response = '';
-            } else if (line) {
-              response = `[OK] Command executed: ${line}\r\n`;
-            }
-
-            ws.send(JSON.stringify({
-              type: 'data',
-              data: `\r\n${response}${simulatedPrompt} `
-            }));
-          } else if (char === '\x7f' || char === '\b') {
-            if (simulatedBuffer.length > 0) {
-              simulatedBuffer = simulatedBuffer.slice(0, -1);
-              ws.send(JSON.stringify({ type: 'data', data: '\b \b' }));
-            }
-          } else {
-            simulatedBuffer += char;
-            ws.send(JSON.stringify({ type: 'data', data: char }));
-          }
-          return;
-        }
-
         if (connection) {
           const stream = type === 'ssh' ? connection.shellStream : connection;
           if (stream && typeof stream.write === 'function') {
@@ -568,7 +483,7 @@ wss.on('connection', (ws) => {
         }
       }
     } catch (e) {
-      console.error('WS Error:', e);
+      console.error('Error handling WebSocket message:', e);
     }
   });
 
