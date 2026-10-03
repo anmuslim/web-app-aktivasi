@@ -27,16 +27,25 @@ import {
   Lock,
   Unlock,
   Radio,
-  RotateCw
+  RotateCw,
+  Shield,
+  ShieldCheck,
+  CheckSquare,
+  Square,
+  Search,
+  Pencil,
+  Plus
 } from './Icons.tsx';
 import {
   INITIAL_OLT_CONFIG,
   INITIAL_TEMPLATES,
   INITIAL_SHORTCUTS,
   DEFAULT_SPEED_PROFILES,
-  DEFAULT_USERS
+  DEFAULT_USERS,
+  DEFAULT_ROLES,
+  ALL_NAV_MENUS
 } from './constants.ts';
-import { ScriptData, OLTConfig, SubTabConfig, User, NavMenu } from './types.ts';
+import { ScriptData, OLTConfig, SubTabConfig, User, NavMenu, RolePermission } from './types.ts';
 
 const getApiBase = () => {
   const savedOverride = localStorage.getItem('api_base_override');
@@ -56,8 +65,24 @@ const App: React.FC = () => {
   const [terminalShortcuts, setTerminalShortcuts] = useState<Record<string, { body: string; category: string } | string>>(INITIAL_SHORTCUTS);
   const [speedProfiles, setSpeedProfiles] = useState<string[]>(DEFAULT_SPEED_PROFILES);
   const [users, setUsers] = useState<User[]>(DEFAULT_USERS);
+  const [roles, setRoles] = useState<RolePermission[]>(DEFAULT_ROLES);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Search filter for area in generator
+  const [areaSearchQuery, setAreaSearchQuery] = useState('');
+
+  // Master Role & User Management Tabs & States
+  const [activeUserSubTab, setActiveUserSubTab] = useState<'users' | 'roles'>('users');
+  const [editUserUsername, setEditUserUsername] = useState('');
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [roleNameInput, setRoleNameInput] = useState('');
+  const [roleIdInput, setRoleIdInput] = useState('');
+  const [roleDescInput, setRoleDescInput] = useState('');
+  const [roleAllowedMenus, setRoleAllowedMenus] = useState<NavMenu[]>(['generator']);
+  const [roleCanEditOtherUsers, setRoleCanEditOtherUsers] = useState(false);
+  const [roleCanDeleteUsers, setRoleCanDeleteUsers] = useState(false);
+  const [roleCanManageRoles, setRoleCanManageRoles] = useState(false);
 
   // Authentication & Session
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -322,17 +347,19 @@ const App: React.FC = () => {
         const shortcuts = (data.terminalShortcuts && Object.keys(data.terminalShortcuts).length > 0) ? data.terminalShortcuts : INITIAL_SHORTCUTS;
         const profiles = (Array.isArray(data.speedProfiles) && data.speedProfiles.length > 0) ? data.speedProfiles : DEFAULT_SPEED_PROFILES;
         const userList = (Array.isArray(data.users) && data.users.length > 0) ? data.users : DEFAULT_USERS;
+        const roleList = (Array.isArray(data.roles) && data.roles.length > 0) ? data.roles : DEFAULT_ROLES;
 
         setOltConfigs(olts);
         setTemplates(tpls);
         setTerminalShortcuts(shortcuts);
         setSpeedProfiles(profiles);
         setUsers(userList);
+        setRoles(roleList);
         setSyncStatus('synced');
 
         // Jika data di server sebelumnya masih kosong, auto-save agar tabel MySQL terisi permanen
         if (!data.oltConfigs || Object.keys(data.oltConfigs).length === 0) {
-          saveToServer(olts, tpls, shortcuts, profiles, userList);
+          saveToServer(olts, tpls, shortcuts, profiles, userList, roleList);
         }
       } else {
         // Fallback to constants agar UI tidak pernah kosong
@@ -341,6 +368,7 @@ const App: React.FC = () => {
         setTerminalShortcuts(prev => Object.keys(prev).length > 0 ? prev : INITIAL_SHORTCUTS);
         setSpeedProfiles(prev => prev.length > 0 ? prev : DEFAULT_SPEED_PROFILES);
         setUsers(prev => prev.length > 0 ? prev : DEFAULT_USERS);
+        setRoles(prev => prev.length > 0 ? prev : DEFAULT_ROLES);
         setSyncStatus('error');
       }
     } catch {
@@ -350,6 +378,7 @@ const App: React.FC = () => {
       setTerminalShortcuts(prev => Object.keys(prev).length > 0 ? prev : INITIAL_SHORTCUTS);
       setSpeedProfiles(prev => prev.length > 0 ? prev : DEFAULT_SPEED_PROFILES);
       setUsers(prev => prev.length > 0 ? prev : DEFAULT_USERS);
+      setRoles(prev => prev.length > 0 ? prev : DEFAULT_ROLES);
       setSyncStatus('error');
     } finally {
       setIsLoading(false);
@@ -393,11 +422,19 @@ const App: React.FC = () => {
     }
   }, [selectedOLT, selectedSub, oltConfigs, speedProfiles]);
 
-  const saveToServer = useCallback(async (configs: any, tpls: any, shortcuts: any, profilesOpt?: string[], usersOpt?: User[]) => {
+  const saveToServer = useCallback(async (
+    configs: any,
+    tpls: any,
+    shortcuts: any,
+    profilesOpt?: string[],
+    usersOpt?: User[],
+    rolesOpt?: RolePermission[]
+  ) => {
     setSyncStatus('syncing');
     try {
       const targetProfiles = profilesOpt !== undefined ? profilesOpt : speedProfiles;
       const targetUsers = usersOpt !== undefined ? usersOpt : users;
+      const targetRoles = rolesOpt !== undefined ? rolesOpt : roles;
       const response = await fetch(`${apiBase}/api/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,12 +443,13 @@ const App: React.FC = () => {
           templates: tpls,
           terminalShortcuts: shortcuts,
           speedProfiles: targetProfiles,
-          users: targetUsers
+          users: targetUsers,
+          roles: targetRoles
         })
       });
       if (response.ok) setSyncStatus('synced'); else setSyncStatus('error');
     } catch { setSyncStatus('error'); }
-  }, [apiBase, speedProfiles, users]);
+  }, [apiBase, speedProfiles, users, roles]);
 
   const seedDatabaseManual = async (force = false) => {
     if (force && !confirm("Muat ulang seluruh konfigurasi OLT, Area & VLAN, Template, dan Shortcut bawaan?")) return;
@@ -797,7 +835,13 @@ const App: React.FC = () => {
   };
 
   const startEditUser = (user: User) => {
+    // Verifikasi izin: jika user bukan dirinya sendiri, harus memiliki canEditOtherUsers
+    if (currentUser && user.id !== currentUser.id && !currentUserRole.canEditOtherUsers) {
+      alert("Peran / Role Anda tidak memiliki wewenang untuk mengubah akun pengguna lain!");
+      return;
+    }
     setEditingUserId(user.id);
+    setEditUserUsername(user.username);
     setEditUserName(user.name);
     setEditUserPassword(user.password || '');
     setEditUserRole(user.role);
@@ -805,26 +849,66 @@ const App: React.FC = () => {
 
   const cancelEditUser = () => {
     setEditingUserId(null);
+    setEditUserUsername('');
     setEditUserName('');
     setEditUserPassword('');
   };
 
   const saveEditUser = (id: string) => {
+    const target = users.find(u => u.id === id);
+    if (!target) return;
+
+    // Verifikasi izin edit user lain
+    if (currentUser && id !== currentUser.id && !currentUserRole.canEditOtherUsers) {
+      alert("Role Anda tidak memiliki wewenang untuk mengubah akun pengguna lain!");
+      return;
+    }
+
+    const cleanUsername = editUserUsername.trim().toLowerCase();
+    if (!cleanUsername) {
+      alert("Username tidak boleh kosong!");
+      return;
+    }
+
+    // Cek duplikasi username jika username diubah
+    if (cleanUsername !== target.username.toLowerCase()) {
+      const isDup = users.some(u => u.id !== id && u.username.toLowerCase() === cleanUsername);
+      if (isDup) {
+        alert(`Username "${cleanUsername}" sudah digunakan oleh akun lain! Gunakan username lain.`);
+        return;
+      }
+    }
+
+    // Cek perubahan role jika edit diri sendiri tanpa izin manage roles
+    let finalRole = editUserRole;
+    if (currentUser && id === currentUser.id && !currentUserRole.canManageRoles) {
+      finalRole = target.role; // Cegah self-elevation jika tidak punya wewenang manage roles
+    }
+
     const updatedUsers = users.map(u => {
       if (u.id === id) {
         return {
           ...u,
-          name: editUserName.trim() || u.username,
+          username: cleanUsername,
+          name: editUserName.trim() || cleanUsername,
           password: editUserPassword.trim() ? editUserPassword : u.password,
-          role: editUserRole
+          role: finalRole
         };
       }
       return u;
     });
+
     setUsers(updatedUsers);
-    saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, updatedUsers);
+    saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, updatedUsers, roles);
+
+    // Update sesi lokal jika yang diubah adalah user yang sedang login
     if (currentUser && currentUser.id === id) {
-      const updatedSelf = { ...currentUser, name: editUserName.trim() || currentUser.username, role: editUserRole };
+      const updatedSelf = {
+        ...currentUser,
+        username: cleanUsername,
+        name: editUserName.trim() || cleanUsername,
+        role: finalRole
+      };
       setCurrentUser(updatedSelf);
       localStorage.setItem('whusnet_auth_user', JSON.stringify(updatedSelf));
     }
@@ -833,7 +917,7 @@ const App: React.FC = () => {
 
   const deleteUser = (id: string) => {
     if (users.length <= 1) {
-      alert("Tidak bisa menghapus user terakhir!");
+      alert("Tidak bisa menghapus user terakhir di sistem!");
       return;
     }
     const target = users.find(u => u.id === id);
@@ -842,10 +926,134 @@ const App: React.FC = () => {
       alert("Tidak bisa menghapus akun yang sedang Anda gunakan saat ini!");
       return;
     }
-    if (confirm(`Hapus user "${target.username}" (${target.name})?`)) {
+
+    if (!currentUserRole.canEditOtherUsers && !currentUserRole.canDeleteUsers) {
+      alert("Role Anda tidak memiliki izin untuk menghapus akun pengguna lain!");
+      return;
+    }
+
+    if (confirm(`Hapus akun pengguna "${target.username}" (${target.name})?`)) {
       const updatedUsers = users.filter(u => u.id !== id);
       setUsers(updatedUsers);
-      saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, updatedUsers);
+      saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, updatedUsers, roles);
+    }
+  };
+
+  // ----------------------------------------------------
+  // MASTER ROLE & HAK AKSES HANDLERS
+  // ----------------------------------------------------
+  const startEditRole = (role: RolePermission) => {
+    setEditingRoleId(role.id);
+    setRoleIdInput(role.id);
+    setRoleNameInput(role.name);
+    setRoleDescInput(role.description || '');
+    setRoleAllowedMenus([...role.allowedMenus]);
+    setRoleCanEditOtherUsers(!!role.canEditOtherUsers);
+    setRoleCanDeleteUsers(!!role.canDeleteUsers);
+    setRoleCanManageRoles(!!role.canManageRoles);
+  };
+
+  const cancelEditRole = () => {
+    setEditingRoleId(null);
+    setRoleIdInput('');
+    setRoleNameInput('');
+    setRoleDescInput('');
+    setRoleAllowedMenus(['generator']);
+    setRoleCanEditOtherUsers(false);
+    setRoleCanDeleteUsers(false);
+    setRoleCanManageRoles(false);
+  };
+
+  const toggleRoleMenuPermission = (menuId: NavMenu) => {
+    setRoleAllowedMenus(prev => {
+      if (prev.includes(menuId)) {
+        if (prev.length <= 1) {
+          alert("Minimal satu menu harus diizinkan untuk setiap role!");
+          return prev;
+        }
+        return prev.filter(m => m !== menuId);
+      } else {
+        return [...prev, menuId];
+      }
+    });
+  };
+
+  const saveRole = () => {
+    if (!roleNameInput.trim()) {
+      alert("Nama role/peran wajib diisi!");
+      return;
+    }
+    if (roleAllowedMenus.length === 0) {
+      alert("Pilih minimal satu menu navigasi yang dapat diakses oleh role ini!");
+      return;
+    }
+
+    const cleanId = (roleIdInput.trim() || roleNameInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+
+    if (editingRoleId) {
+      // Update existing role
+      const updatedRoles = roles.map(r => {
+        if (r.id === editingRoleId) {
+          return {
+            ...r,
+            name: roleNameInput.trim(),
+            description: roleDescInput.trim(),
+            allowedMenus: roleAllowedMenus,
+            canEditOtherUsers: roleCanEditOtherUsers,
+            canDeleteUsers: roleCanDeleteUsers,
+            canManageRoles: roleCanManageRoles
+          };
+        }
+        return r;
+      });
+      setRoles(updatedRoles);
+      saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, users, updatedRoles);
+      cancelEditRole();
+    } else {
+      // Create new role
+      if (roles.some(r => r.id.toLowerCase() === cleanId.toLowerCase())) {
+        alert(`Role dengan ID "${cleanId}" sudah terdaftar! Gunakan ID atau Nama lain.`);
+        return;
+      }
+      const newRole: RolePermission = {
+        id: cleanId,
+        name: roleNameInput.trim(),
+        description: roleDescInput.trim(),
+        allowedMenus: roleAllowedMenus,
+        canEditOtherUsers: roleCanEditOtherUsers,
+        canDeleteUsers: roleCanDeleteUsers,
+        canManageRoles: roleCanManageRoles,
+        isSystem: false
+      };
+      const updatedRoles = [...roles, newRole];
+      setRoles(updatedRoles);
+      saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, users, updatedRoles);
+      cancelEditRole();
+    }
+  };
+
+  const deleteRole = (roleId: string) => {
+    const targetRole = roles.find(r => r.id === roleId);
+    if (!targetRole) return;
+
+    if (targetRole.isSystem || roleId === 'admin') {
+      alert("Role sistem bawaan (Administrator) tidak dapat dihapus!");
+      return;
+    }
+
+    const assignedUsers = users.filter(u => u.role === roleId);
+    if (assignedUsers.length > 0) {
+      alert(`Role "${targetRole.name}" tidak dapat dihapus karena masih digunakan oleh ${assignedUsers.length} akun pengguna (${assignedUsers.map(u => u.username).join(', ')})! Pindahkan role akun tersebut ke role lain terlebih dahulu.`);
+      return;
+    }
+
+    if (confirm(`Hapus master role "${targetRole.name}"?`)) {
+      const updatedRoles = roles.filter(r => r.id !== roleId);
+      setRoles(updatedRoles);
+      saveToServer(oltConfigs, templates, terminalShortcuts, speedProfiles, users, updatedRoles);
+      if (editingRoleId === roleId) {
+        cancelEditRole();
+      }
     }
   };
 
@@ -1128,6 +1336,19 @@ const App: React.FC = () => {
 
   const paramList = ['slot', 'port', 'onu', 'sn', 'odp', 'pppoe', 'profile', 'vlan', 'vlanProfile', 'locks'];
 
+  const getNavIcon = (id: NavMenu) => {
+    switch (id) {
+      case 'generator': return <Terminal className="w-4 h-4" />;
+      case 'olt': return <Server className="w-4 h-4" />;
+      case 'area': return <FolderTree className="w-4 h-4" />;
+      case 'template': return <FileCode2 className="w-4 h-4" />;
+      case 'shortcut': return <Command className="w-4 h-4" />;
+      case 'speed': return <Gauge className="w-4 h-4" />;
+      case 'user': return <Users className="w-4 h-4" />;
+      default: return <Server className="w-4 h-4" />;
+    }
+  };
+
   const navItems: { id: NavMenu; label: string; icon: React.ReactNode; count?: number; desc: string }[] = useMemo(() => [
     { id: 'generator', label: 'Generator & Terminal', icon: <Terminal className="w-4 h-4" />, desc: 'Aktivasi OLT & CLI' },
     { id: 'olt', label: 'Manajemen OLT', icon: <Server className="w-4 h-4" />, count: Object.keys(oltConfigs).length, desc: 'Daftar IP & Akun OLT' },
@@ -1137,6 +1358,40 @@ const App: React.FC = () => {
     { id: 'speed', label: 'Profile / Speed', icon: <Gauge className="w-4 h-4" />, count: speedProfiles.length, desc: 'Bandwidth & Kecepatan' },
     { id: 'user', label: 'Manajemen User', icon: <Users className="w-4 h-4" />, count: users.length, desc: 'Akses & Akun Petugas' },
   ], [oltConfigs, templates, terminalShortcuts, speedProfiles, users]);
+
+  // Current User Role & Permissions derivation
+  const currentUserRole = useMemo<RolePermission>(() => {
+    if (!currentUser) return DEFAULT_ROLES[0];
+    const found = roles.find(r => r.id === currentUser.role);
+    if (found) return found;
+    const def = DEFAULT_ROLES.find(r => r.id === currentUser.role);
+    return def || {
+      id: currentUser.role || 'custom',
+      name: currentUser.role || 'Custom',
+      allowedMenus: ['generator'],
+      canEditOtherUsers: false,
+      canDeleteUsers: false,
+      canManageRoles: false
+    };
+  }, [currentUser, roles]);
+
+  // Only display navigation items allowed for the logged in user's role
+  const visibleNavItems = useMemo(() => {
+    return navItems.filter(item => {
+      if (!currentUser) return true;
+      return currentUserRole.allowedMenus.includes(item.id);
+    });
+  }, [navItems, currentUser, currentUserRole]);
+
+  // Guard: If activeNav is not allowed for current user, redirect to first allowed menu
+  useEffect(() => {
+    if (currentUser && currentUserRole) {
+      if (!currentUserRole.allowedMenus.includes(activeNav)) {
+        const fallback = currentUserRole.allowedMenus[0] || 'generator';
+        setActiveNav(fallback);
+      }
+    }
+  }, [currentUser, currentUserRole, activeNav]);
 
   const currentNavTitle = useMemo(() => {
     switch (activeNav) {
@@ -1375,107 +1630,113 @@ const App: React.FC = () => {
         {/* Navigation Items */}
         <div className="flex-1 overflow-y-auto p-2.5 space-y-4 custom-scrollbar">
           <div>
-            {!isSidebarCollapsed ? (
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
-                Menu Utama
-              </div>
-            ) : (
-              <div className="my-1 border-t border-slate-800/40" />
-            )}
-            <button
-              onClick={() => { setActiveNav('generator'); setIsMobileNavOpen(false); }}
-              title="Generator Script & Terminal CLI"
-              className={`w-full flex items-center rounded-xl transition-all ${
-                isSidebarCollapsed ? 'justify-center p-3' : 'justify-between p-2.5 text-left'
-              } ${
-                activeNav === 'generator'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow-lg shadow-cyan-600/20'
-                  : theme === 'dark'
-                  ? 'hover:bg-slate-900 text-slate-300 hover:text-white'
-                  : 'hover:bg-slate-100 text-slate-700'
-              }`}
-            >
-              <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                  activeNav === 'generator' ? 'bg-white/20 text-white shadow-sm' : 'bg-cyan-500/10 text-cyan-400'
-                }`}>
-                  <Terminal className="w-4 h-4" />
+          {currentUserRole.allowedMenus.includes('generator') && (
+            <div>
+              {!isSidebarCollapsed ? (
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
+                  Menu Utama
                 </div>
-                {!isSidebarCollapsed && (
-                  <div>
-                    <div className="text-xs font-bold leading-none">Generator & Terminal</div>
-                    <div className={`text-[10px] mt-1 ${activeNav === 'generator' ? 'text-cyan-100' : 'text-slate-500'}`}>
-                      Aktivasi OLT & CLI
-                    </div>
-                  </div>
-                )}
-              </div>
-              {!isSidebarCollapsed && selectedOLT && (
-                <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                  activeNav === 'generator' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-400'
-                }`}>
-                  AKTIF
-                </span>
+              ) : (
+                <div className="my-1 border-t border-slate-800/40" />
               )}
-            </button>
-          </div>
-
-          <div>
-            {!isSidebarCollapsed ? (
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
-                Pengaturan Sistem
-              </div>
-            ) : (
-              <div className="my-1 border-t border-slate-800/40" />
-            )}
-            <div className="space-y-1">
-              {navItems.filter(item => item.id !== 'generator').map(item => {
-                const isActive = activeNav === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => { setActiveNav(item.id); setIsMobileNavOpen(false); }}
-                    title={`${item.label} (${item.desc})`}
-                    className={`w-full flex items-center rounded-xl transition-all relative group ${
-                      isSidebarCollapsed ? 'justify-center p-3' : 'justify-between p-2.5 text-left'
-                    } ${
-                      isActive
-                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow-lg shadow-cyan-600/20'
-                        : theme === 'dark'
-                        ? 'hover:bg-slate-900 text-slate-300 hover:text-white'
-                        : 'hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                        isActive ? 'bg-white/20 text-white shadow-sm' : 'bg-slate-800/80 text-cyan-400 group-hover:bg-slate-700/80 group-hover:text-cyan-300'
-                      }`}>
-                        {item.icon}
+              <button
+                onClick={() => { setActiveNav('generator'); setIsMobileNavOpen(false); }}
+                title="Generator Script & Terminal CLI"
+                className={`w-full flex items-center rounded-xl transition-all ${
+                  isSidebarCollapsed ? 'justify-center p-3' : 'justify-between p-2.5 text-left'
+                } ${
+                  activeNav === 'generator'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow-lg shadow-cyan-600/20'
+                    : theme === 'dark'
+                    ? 'hover:bg-slate-900 text-slate-300 hover:text-white'
+                    : 'hover:bg-slate-100 text-slate-700'
+                }`}
+              >
+                <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    activeNav === 'generator' ? 'bg-white/20 text-white shadow-sm' : 'bg-cyan-500/10 text-cyan-400'
+                  }`}>
+                    <Terminal className="w-4 h-4" />
+                  </div>
+                  {!isSidebarCollapsed && (
+                    <div>
+                      <div className="text-xs font-bold leading-none">Generator & Terminal</div>
+                      <div className={`text-[10px] mt-1 ${activeNav === 'generator' ? 'text-cyan-100' : 'text-slate-500'}`}>
+                        Aktivasi OLT & CLI
                       </div>
-                      {!isSidebarCollapsed && (
-                        <div>
-                          <div className="text-xs font-bold leading-none">{item.label}</div>
-                          <div className={`text-[10px] mt-1 ${isActive ? 'text-cyan-100' : 'text-slate-500'}`}>
-                            {item.desc}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                    {item.count !== undefined && (
-                      !isSidebarCollapsed ? (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                          isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {item.count}
-                        </span>
-                      ) : (
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-400" />
-                      )
-                    )}
-                  </button>
-                );
-              })}
+                  )}
+                </div>
+                {!isSidebarCollapsed && selectedOLT && (
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                    activeNav === 'generator' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-400'
+                  }`}>
+                    AKTIF
+                  </span>
+                )}
+              </button>
             </div>
+          )}
+
+          {visibleNavItems.some(i => i.id !== 'generator') && (
+            <div>
+              {!isSidebarCollapsed ? (
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
+                  Pengaturan Sistem
+                </div>
+              ) : (
+                <div className="my-1 border-t border-slate-800/40" />
+              )}
+              <div className="space-y-1">
+                {visibleNavItems.filter(item => item.id !== 'generator').map(item => {
+                  const isActive = activeNav === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { setActiveNav(item.id); setIsMobileNavOpen(false); }}
+                      title={`${item.label} (${item.desc})`}
+                      className={`w-full flex items-center rounded-xl transition-all relative group ${
+                        isSidebarCollapsed ? 'justify-center p-3' : 'justify-between p-2.5 text-left'
+                      } ${
+                        isActive
+                          ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow-lg shadow-cyan-600/20'
+                          : theme === 'dark'
+                          ? 'hover:bg-slate-900 text-slate-300 hover:text-white'
+                          : 'hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                          isActive ? 'bg-white/20 text-white shadow-sm' : 'bg-slate-800/80 text-cyan-400 group-hover:bg-slate-700/80 group-hover:text-cyan-300'
+                        }`}>
+                          {item.icon}
+                        </div>
+                        {!isSidebarCollapsed && (
+                          <div>
+                            <div className="text-xs font-bold leading-none">{item.label}</div>
+                            <div className={`text-[10px] mt-1 ${isActive ? 'text-cyan-100' : 'text-slate-500'}`}>
+                              {item.desc}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {item.count !== undefined && (
+                        !isSidebarCollapsed ? (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {item.count}
+                          </span>
+                        ) : (
+                          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-400" />
+                        )
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           </div>
         </div>
 
@@ -1649,11 +1910,18 @@ const App: React.FC = () => {
 
                   {selectedOLT && oltConfigs[selectedOLT] && (
                     <div className={`pt-6 mt-6 border-t animate-in slide-in-from-top-2 duration-300 ${theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}`}>
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                          <FolderTree className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Pilih Area & VLAN</span>
-                        </h3>
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="flex items-center gap-2">
+                          <h3 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <FolderTree className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Pilih Area & VLAN</span>
+                          </h3>
+                          {Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length > 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              {Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length} Area
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { setTargetNodeForSub(selectedOLT); setActiveNav('area'); }}
@@ -1664,35 +1932,85 @@ const App: React.FC = () => {
                           >
                             + Area
                           </button>
-                          {Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length > 8 && (
-                            <button onClick={() => setIsAreaExpanded(!isAreaExpanded)} className="text-[10px] font-bold text-blue-500 uppercase bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 hover:bg-blue-500/20 transition-all">
-                              {isAreaExpanded ? 'Show Less' : 'View All'}
+                          {Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length > 4 && (
+                            <button
+                              onClick={() => setIsAreaExpanded(!isAreaExpanded)}
+                              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border transition-all flex items-center gap-1 ${
+                                isAreaExpanded
+                                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                  : 'text-blue-400 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'
+                              }`}
+                            >
+                              {isAreaExpanded ? 'Ringkas' : `View All (${Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length})`}
                             </button>
                           )}
                         </div>
                       </div>
-                      <div className={`flex flex-wrap gap-2 overflow-hidden transition-all duration-500 ease-in-out ${isAreaExpanded ? 'max-h-[1000px]' : 'max-h-[44px]'}`}>
+
+                      {/* Search box if there are many areas and view is expanded */}
+                      {isAreaExpanded && Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length > 6 && (
+                        <div className="relative mb-2.5">
+                          <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                          <input
+                            type="text"
+                            placeholder="Cari nama area, VLAN ID, atau prefix..."
+                            value={areaSearchQuery}
+                            onChange={e => setAreaSearchQuery(e.target.value)}
+                            className={`w-full pl-8 pr-7 py-1.5 rounded-lg text-xs outline-none border transition-colors ${
+                              theme === 'dark' ? 'bg-slate-950 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                            }`}
+                          />
+                          {areaSearchQuery && (
+                            <button onClick={() => setAreaSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs">✕</button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className={`flex flex-wrap gap-2 transition-all duration-300 ease-in-out ${
+                        isAreaExpanded ? 'max-h-[360px] overflow-y-auto custom-scrollbar p-0.5' : 'max-h-[44px] overflow-hidden'
+                      }`}>
                         {Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).length === 0 ? (
                           <div className="flex items-center justify-between w-full py-1">
                             <span className="text-[11px] text-slate-500 italic">Belum ada Area/VLAN untuk OLT ini.</span>
                             <button onClick={() => { setTargetNodeForSub(selectedOLT); setActiveNav('area'); }} className="text-xs text-blue-500 font-bold hover:underline">Tambah Area</button>
                           </div>
                         ) : (
-                          Object.keys((oltConfigs[selectedOLT] as OLTConfig).subtabs || {}).map(s => (
-                            <button
-                              key={s}
-                              onClick={() => setSelectedSub(s)}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
-                                selectedSub === s
-                                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
-                                  : theme === 'dark'
-                                  ? 'bg-slate-800/50 text-slate-400 border-slate-700 hover:text-slate-200'
-                                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-900 hover:bg-white'
-                              }`}
-                            >
-                              {s}
-                            </button>
-                          ))
+                          (() => {
+                            const subtabEntries = Object.entries((oltConfigs[selectedOLT] as OLTConfig).subtabs || {});
+                            const filtered = (isAreaExpanded && areaSearchQuery.trim())
+                              ? subtabEntries.filter(([s, cfg]) =>
+                                  s.toLowerCase().includes(areaSearchQuery.toLowerCase()) ||
+                                  String(cfg.vlan).includes(areaSearchQuery) ||
+                                  (cfg.ppp_prefix && cfg.ppp_prefix.toLowerCase().includes(areaSearchQuery.toLowerCase()))
+                                )
+                              : subtabEntries;
+
+                            if (filtered.length === 0) {
+                              return <span className="text-[11px] text-slate-500 italic py-1">Tidak ada area yang cocok dengan pencarian "{areaSearchQuery}".</span>;
+                            }
+
+                            return filtered.map(([s, cfg]) => (
+                              <button
+                                key={s}
+                                onClick={() => setSelectedSub(s)}
+                                title={`Area: ${s} | VLAN: ${cfg.vlan} | Prefix: ${cfg.ppp_prefix || '-'} | Template: ${cfg.template || 'STANDAR'}`}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1.5 ${
+                                  selectedSub === s
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
+                                    : theme === 'dark'
+                                    ? 'bg-slate-800/50 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-500'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-900 hover:bg-white'
+                                }`}
+                              >
+                                <span>{s}</span>
+                                <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                                  selectedSub === s ? 'bg-white/20 text-white' : 'bg-slate-700/60 text-slate-400'
+                                }`}>
+                                  VLAN {cfg.vlan}
+                                </span>
+                              </button>
+                            ));
+                          })()
                         )}
                       </div>
                     </div>
@@ -3100,220 +3418,668 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* 7. MANAJEMEN USER & HAK AKSES VIEW */}
+          {/* 7. MANAJEMEN USER & MASTER ROLE VIEW */}
           {activeNav === 'user' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-200">
-              {/* Form Tambah User */}
-              <div className="lg:col-span-5">
-                <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
-                  theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
-                }`}>
-                  <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
-                    <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      <span>Tambah Pengguna Baru</span>
-                    </h3>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Username Login</label>
-                      <input
-                        placeholder="e.g. teknisi1"
-                        value={newUserUsername}
-                        onChange={e => setNewUserUsername(e.target.value)}
-                        className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
-                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                        }`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nama Lengkap</label>
-                      <input
-                        placeholder="e.g. Budi Santoso"
-                        value={newUserName}
-                        onChange={e => setNewUserName(e.target.value)}
-                        className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
-                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                        }`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Password</label>
-                      <input
-                        type="password"
-                        placeholder="Masukkan password"
-                        value={newUserPassword}
-                        onChange={e => setNewUserPassword(e.target.value)}
-                        className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
-                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                        }`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Role / Peran</label>
-                      <select
-                        value={newUserRole}
-                        onChange={e => setNewUserRole(e.target.value as any)}
-                        className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
-                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                        }`}
-                      >
-                        <option value="admin">Administrator (Akses Penuh)</option>
-                        <option value="operator">Operator (Konfigurasi & Terminal)</option>
-                        <option value="teknisi">Teknisi (Aktivasi Lapangan)</option>
-                      </select>
-                    </div>
-
-                    <button
-                      onClick={addUser}
-                      className="w-full mt-2 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all"
-                    >
-                      Simpan User Baru
-                    </button>
-                  </div>
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Header Sub-Tabs: Pengguna & Master Role */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/60">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-amber-400" />
+                    <span>Manajemen User & Hak Akses</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Kelola akun petugas operasional, master role/peran sistem, hak akses menu, dan wewenang akun.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+                  <button
+                    onClick={() => setActiveUserSubTab('users')}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeUserSubTab === 'users'
+                        ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Akun Pengguna ({users.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveUserSubTab('roles')}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeUserSubTab === 'roles'
+                        ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Master Role & Hak Akses ({roles.length})</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Daftar Pengguna */}
-              <div className="lg:col-span-7">
-                <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
-                  theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
-                }`}>
-                  <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
-                    <h3 className="text-sm font-bold uppercase tracking-wider">
-                      Daftar Pengguna Sistem ({users.length})
-                    </h3>
+              {/* TAB 1: MANAJEMEN PENGGUNA */}
+              {activeUserSubTab === 'users' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-200">
+                  {/* Form Tambah User */}
+                  <div className="lg:col-span-5">
+                    <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
+                      theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+                    }`}>
+                      <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
+                        <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          <span>Tambah Pengguna Baru</span>
+                        </h3>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Username Login</label>
+                          <input
+                            placeholder="e.g. teknisi1"
+                            value={newUserUsername}
+                            onChange={e => setNewUserUsername(e.target.value)}
+                            className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
+                              theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nama Lengkap</label>
+                          <input
+                            placeholder="e.g. Budi Santoso"
+                            value={newUserName}
+                            onChange={e => setNewUserName(e.target.value)}
+                            className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
+                              theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Password</label>
+                          <input
+                            type="password"
+                            placeholder="Masukkan password"
+                            value={newUserPassword}
+                            onChange={e => setNewUserPassword(e.target.value)}
+                            className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
+                              theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center justify-between">
+                            <span>Role / Peran</span>
+                            <button
+                              type="button"
+                              onClick={() => setActiveUserSubTab('roles')}
+                              className="text-[10px] text-amber-400 font-bold hover:underline lowercase"
+                            >
+                              + kelola master role
+                            </button>
+                          </label>
+                          <select
+                            value={newUserRole}
+                            onChange={e => setNewUserRole(e.target.value)}
+                            className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
+                              theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                            }`}
+                          >
+                            {roles.map(r => (
+                              <option key={r.id} value={r.id}>
+                                {r.name} ({r.allowedMenus.length} Menu Akses)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={addUser}
+                          className="w-full mt-2 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all"
+                        >
+                          Simpan User Baru
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-3 max-h-[550px] overflow-y-auto custom-scrollbar pr-1">
-                    {users.map(u => {
-                      const isEditing = editingUserId === u.id;
-                      const isSelf = currentUser?.id === u.id;
-                      return (
-                        <div
-                          key={u.id}
-                          className={`p-4 rounded-xl border transition-all ${
-                            theme === 'dark' ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
-                          }`}
-                        >
-                          {isEditing ? (
-                            <div className="space-y-3">
-                              <div className="font-bold text-cyan-400 text-xs flex items-center justify-between">
-                                <span>Edit Akun @{u.username}</span>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Nama Lengkap</label>
-                                  <input
-                                    placeholder="Nama Lengkap"
-                                    value={editUserName}
-                                    onChange={e => setEditUserName(e.target.value)}
-                                    className={`w-full p-2 rounded-lg text-xs border outline-none ${
-                                      theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                                    }`}
-                                  />
+                  {/* Daftar Pengguna */}
+                  <div className="lg:col-span-7">
+                    <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
+                      theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+                    }`}>
+                      <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
+                        <h3 className="text-sm font-bold uppercase tracking-wider">
+                          Daftar Pengguna Sistem ({users.length})
+                        </h3>
+                      </div>
+
+                      <div className="space-y-3 max-h-[550px] overflow-y-auto custom-scrollbar pr-1">
+                        {users.map(u => {
+                          const isEditing = editingUserId === u.id;
+                          const isSelf = currentUser?.id === u.id;
+                          const assignedRole = roles.find(r => r.id === u.role);
+                          return (
+                            <div
+                              key={u.id}
+                              className={`p-4 rounded-xl border transition-all ${
+                                theme === 'dark' ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                              }`}
+                            >
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <div className="font-bold text-cyan-400 text-xs flex items-center justify-between">
+                                    <span>Edit Akun @{u.username}</span>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {/* Username field - user can edit other usernames if role has canEditOtherUsers */}
+                                    <div>
+                                      <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1 flex items-center justify-between">
+                                        <span>Username Login</span>
+                                        {(isSelf || currentUserRole.canEditOtherUsers) && (
+                                          <span className="text-amber-400 font-normal lowercase">(dapat diubah)</span>
+                                        )}
+                                      </label>
+                                      <input
+                                        placeholder="Username"
+                                        value={editUserUsername}
+                                        onChange={e => setEditUserUsername(e.target.value)}
+                                        disabled={!isSelf && !currentUserRole.canEditOtherUsers}
+                                        className={`w-full p-2 rounded-lg text-xs font-mono border outline-none ${
+                                          !isSelf && !currentUserRole.canEditOtherUsers
+                                            ? 'opacity-60 cursor-not-allowed bg-slate-900 border-slate-800 text-slate-400'
+                                            : theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                        }`}
+                                      />
+                                      {!isSelf && !currentUserRole.canEditOtherUsers && (
+                                        <p className="text-[10px] text-rose-400 mt-1">Role Anda tidak memiliki izin untuk mengubah username pengguna lain.</p>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Nama Lengkap</label>
+                                      <input
+                                        placeholder="Nama Lengkap"
+                                        value={editUserName}
+                                        onChange={e => setEditUserName(e.target.value)}
+                                        className={`w-full p-2 rounded-lg text-xs border outline-none ${
+                                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Password Baru (opsional)</label>
+                                      <input
+                                        type="password"
+                                        placeholder="Kosongkan jika tidak diubah"
+                                        value={editUserPassword}
+                                        onChange={e => setEditUserPassword(e.target.value)}
+                                        className={`w-full p-2 rounded-lg text-xs border outline-none ${
+                                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                        }`}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Role / Peran</label>
+                                      <select
+                                        value={editUserRole}
+                                        onChange={e => setEditUserRole(e.target.value)}
+                                        className={`w-full p-2 rounded-lg text-xs border outline-none ${
+                                          theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                        }`}
+                                      >
+                                        {roles.map(r => (
+                                          <option key={r.id} value={r.id}>{r.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      onClick={() => saveEditUser(u.id)}
+                                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs uppercase"
+                                    >
+                                      Simpan Perubahan
+                                    </button>
+                                    <button
+                                      onClick={cancelEditUser}
+                                      className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-xs uppercase"
+                                    >
+                                      Batal
+                                    </button>
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Password Baru (opsional)</label>
-                                  <input
-                                    type="password"
-                                    placeholder="Kosongkan jika tidak diubah"
-                                    value={editUserPassword}
-                                    onChange={e => setEditUserPassword(e.target.value)}
-                                    className={`w-full p-2 rounded-lg text-xs border outline-none ${
-                                      theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                                    }`}
-                                  />
+                              ) : (
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold text-sm uppercase shrink-0">
+                                      {(u.name || u.username)[0]}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-sm text-slate-200">{u.name || u.username}</span>
+                                        {isSelf && (
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-mono font-bold">
+                                            Anda
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2 mt-0.5">
+                                        <span className="font-mono">@{u.username}</span>
+                                        <span>•</span>
+                                        <span className={`uppercase font-bold text-[10px] px-2 py-0.5 rounded ${
+                                          u.role === 'admin'
+                                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                            : u.role === 'operator'
+                                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                        }`}>
+                                          {assignedRole?.name || u.role}
+                                        </span>
+                                        <span className="text-[10px] text-slate-500">
+                                          ({assignedRole?.allowedMenus?.length || 0} menu akses)
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {(isSelf || currentUserRole.canEditOtherUsers) && (
+                                      <button
+                                        onClick={() => startEditUser(u)}
+                                        className="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 font-bold text-xs uppercase"
+                                      >
+                                        Edit
+                                      </button>
+                                    )}
+                                    {!isSelf && users.length > 1 && (currentUserRole.canDeleteUsers || currentUserRole.id === 'admin') && (
+                                      <button
+                                        onClick={() => deleteUser(u.id)}
+                                        className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 font-bold text-xs uppercase"
+                                      >
+                                        Hapus
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                              <div>
-                                <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Role</label>
-                                <select
-                                  value={editUserRole}
-                                  onChange={e => setEditUserRole(e.target.value as any)}
-                                  className={`w-full p-2 rounded-lg text-xs border outline-none ${
-                                    theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: MASTER ROLE & HAK AKSES */}
+              {activeUserSubTab === 'roles' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-200">
+                  {/* Form Tambah / Edit Master Role */}
+                  <div className="lg:col-span-5">
+                    <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
+                      theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+                    }`}>
+                      <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
+                        <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>{editingRoleId ? `Edit Role: ${roleNameInput || editingRoleId}` : 'Tambah Master Role Baru'}</span>
+                        </h3>
+                        {editingRoleId && (
+                          <button
+                            onClick={cancelEditRole}
+                            className="text-xs text-slate-400 hover:text-white"
+                          >
+                            Batal
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              ID Role (Slug)
+                            </label>
+                            <input
+                              placeholder="e.g. noc_lead"
+                              value={roleIdInput}
+                              onChange={e => setRoleIdInput(e.target.value)}
+                              disabled={!!editingRoleId}
+                              className={`w-full p-2.5 rounded-xl text-xs font-mono outline-none border transition-colors ${
+                                editingRoleId
+                                  ? 'opacity-60 cursor-not-allowed bg-slate-900 border-slate-800 text-slate-400'
+                                  : theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nama Peran / Role</label>
+                            <input
+                              placeholder="e.g. NOC Supervisor"
+                              value={roleNameInput}
+                              onChange={e => setRoleNameInput(e.target.value)}
+                              className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors ${
+                                theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                              }`}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Deskripsi Peran</label>
+                          <textarea
+                            rows={2}
+                            placeholder="Tuliskan keterangan wewenang peran ini..."
+                            value={roleDescInput}
+                            onChange={e => setRoleDescInput(e.target.value)}
+                            className={`w-full p-2.5 rounded-xl text-xs outline-none border transition-colors resize-none ${
+                              theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        {/* Hak Akses Menu Navigasi (Interactive Checklist) */}
+                        <div className="pt-2 border-t border-slate-800/80">
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center justify-between">
+                            <span>Hak Akses Menu Sistem ({roleAllowedMenus.length}/{ALL_NAV_MENUS.length})</span>
+                            <span className="text-[10px] text-cyan-400 font-normal">Klik untuk aktifkan/nonaktifkan</span>
+                          </label>
+
+                          <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                            {ALL_NAV_MENUS.map(m => {
+                              const isAllowed = roleAllowedMenus.includes(m.id);
+                              return (
+                                <div
+                                  key={m.id}
+                                  onClick={() => toggleRoleMenuPermission(m.id)}
+                                  className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-all select-none ${
+                                    isAllowed
+                                      ? 'border-cyan-500/60 bg-cyan-500/10 text-white'
+                                      : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
                                   }`}
                                 >
-                                  <option value="admin">Administrator</option>
-                                  <option value="operator">Operator</option>
-                                  <option value="teknisi">Teknisi</option>
-                                </select>
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`p-1.5 rounded-lg ${isAllowed ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'}`}>
+                                      {getNavIcon(m.id)}
+                                    </div>
+                                    <div>
+                                      <div className={`text-xs font-bold leading-none ${isAllowed ? 'text-cyan-300' : 'text-slate-300'}`}>
+                                        {m.label}
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 mt-0.5">{m.desc}</div>
+                                    </div>
+                                  </div>
+                                  {isAllowed ? (
+                                    <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-600 shrink-0" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Hak Akses Wewenang Khusus Akun */}
+                        <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                            Wewenang Akun & Pengguna
+                          </label>
+
+                          {/* 1. canEditOtherUsers: Izin Mengubah Username Pengguna Lain */}
+                          <div
+                            onClick={() => setRoleCanEditOtherUsers(!roleCanEditOtherUsers)}
+                            className={`p-3 rounded-xl border cursor-pointer flex items-start gap-2.5 transition-all select-none ${
+                              roleCanEditOtherUsers
+                                ? 'border-amber-500/60 bg-amber-500/10 text-white'
+                                : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {roleCanEditOtherUsers ? (
+                                <CheckSquare className="w-4 h-4 text-amber-400" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-600" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-amber-300 leading-tight">
+                                Izin Mengubah Username & Akun Pengguna Lain
                               </div>
-                              <div className="flex gap-2 pt-1">
-                                <button
-                                  onClick={() => saveEditUser(u.id)}
-                                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs uppercase"
-                                >
-                                  Simpan Perubahan
-                                </button>
-                                <button
-                                  onClick={cancelEditUser}
-                                  className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-xs uppercase"
-                                >
-                                  Batal
-                                </button>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Mengizinkan pemegang role ini untuk mengubah username login, nama, dan detail profil pengguna lain.
                               </div>
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold text-sm uppercase shrink-0">
-                                  {(u.name || u.username)[0]}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-sm text-slate-200">{u.name || u.username}</span>
-                                    {isSelf && (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-mono font-bold">
-                                        Anda
+                          </div>
+
+                          {/* 2. canDeleteUsers */}
+                          <div
+                            onClick={() => setRoleCanDeleteUsers(!roleCanDeleteUsers)}
+                            className={`p-3 rounded-xl border cursor-pointer flex items-start gap-2.5 transition-all select-none ${
+                              roleCanDeleteUsers
+                                ? 'border-rose-500/60 bg-rose-500/10 text-white'
+                                : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {roleCanDeleteUsers ? (
+                                <CheckSquare className="w-4 h-4 text-rose-400" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-600" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-rose-300 leading-tight">
+                                Izin Menghapus Akun Pengguna
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Mengizinkan pemegang role ini untuk menghapus akun pengguna lain dari database.
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 3. canManageRoles */}
+                          <div
+                            onClick={() => setRoleCanManageRoles(!roleCanManageRoles)}
+                            className={`p-3 rounded-xl border cursor-pointer flex items-start gap-2.5 transition-all select-none ${
+                              roleCanManageRoles
+                                ? 'border-purple-500/60 bg-purple-500/10 text-white'
+                                : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {roleCanManageRoles ? (
+                                <CheckSquare className="w-4 h-4 text-purple-400" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-600" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-purple-300 leading-tight">
+                                Izin Mengelola Master Role & Hak Akses
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Mengizinkan pemegang role ini untuk membuat, mengedit, dan mengonfigurasi master role serta hak akses menu.
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            onClick={saveRole}
+                            className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all"
+                          >
+                            {editingRoleId ? 'Simpan Perubahan Role' : 'Simpan Master Role Baru'}
+                          </button>
+                          {editingRoleId && (
+                            <button
+                              onClick={cancelEditRole}
+                              className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs uppercase transition-all"
+                            >
+                              Batal
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Daftar Master Role & Wewenang */}
+                  <div className="lg:col-span-7">
+                    <div className={`p-6 rounded-2xl border shadow-sm space-y-4 ${
+                      theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+                    }`}>
+                      <div className="border-b pb-3 flex justify-between items-center border-slate-800/60">
+                        <div>
+                          <h3 className="text-sm font-bold uppercase tracking-wider">
+                            Daftar Master Role Sistem ({roles.length})
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Setiap role menentukan menu yang tampil di navigasi serta wewenang akun pengguna.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 max-h-[620px] overflow-y-auto custom-scrollbar pr-1">
+                        {roles.map(r => {
+                          const assignedUsers = users.filter(u => u.role === r.id);
+                          const isBeingEdited = editingRoleId === r.id;
+                          return (
+                            <div
+                              key={r.id}
+                              className={`p-4 rounded-xl border transition-all ${
+                                isBeingEdited
+                                  ? 'border-amber-500/70 bg-amber-500/10'
+                                  : theme === 'dark' ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                              }`}
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold text-sm text-amber-400">{r.name}</span>
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                                      #{r.id}
+                                    </span>
+                                    {r.isSystem ? (
+                                      <span className="text-[9px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20">
+                                        System Role
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20">
+                                        Custom Role
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                                    <span>@{u.username}</span>
-                                    <span>•</span>
-                                    <span className={`uppercase font-bold text-[10px] px-2 py-0.5 rounded ${
-                                      u.role === 'admin'
-                                        ? 'bg-amber-500/20 text-amber-400'
-                                        : u.role === 'operator'
-                                        ? 'bg-cyan-500/20 text-cyan-400'
-                                        : 'bg-emerald-500/20 text-emerald-400'
-                                    }`}>
-                                      {u.role}
+
+                                  {r.description && (
+                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                      {r.description}
+                                    </p>
+                                  )}
+
+                                  {/* Menu yang diizinkan */}
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                      Menu Yang Dapat Diakses ({r.allowedMenus.length}):
                                     </span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {r.allowedMenus.map(menuId => {
+                                        const menuObj = ALL_NAV_MENUS.find(m => m.id === menuId);
+                                        return (
+                                          <span
+                                            key={menuId}
+                                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800/90 text-cyan-300 border border-slate-700/60"
+                                          >
+                                            {getNavIcon(menuId)}
+                                            <span>{menuObj?.label || menuId}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Wewenang khusus flags */}
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                      Wewenang Pengguna:
+                                    </span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                        r.canEditOtherUsers
+                                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                          : 'bg-slate-800 text-slate-500'
+                                      }`}>
+                                        Ubah Username Lain: {r.canEditOtherUsers ? '✓ Ya' : '✗ Tidak'}
+                                      </span>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                        r.canDeleteUsers
+                                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                          : 'bg-slate-800 text-slate-500'
+                                      }`}>
+                                        Hapus User: {r.canDeleteUsers ? '✓ Ya' : '✗ Tidak'}
+                                      </span>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                        r.canManageRoles
+                                          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                          : 'bg-slate-800 text-slate-500'
+                                      }`}>
+                                        Kelola Role: {r.canManageRoles ? '✓ Ya' : '✗ Tidak'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Assigned users */}
+                                  <div className="text-[11px] text-slate-400 pt-1">
+                                    <span>Digunakan oleh: </span>
+                                    <strong className="text-amber-300 font-mono">
+                                      {assignedUsers.length} pengguna
+                                    </strong>
+                                    {assignedUsers.length > 0 && (
+                                      <span className="text-slate-500 text-[10px] ml-1">
+                                        ({assignedUsers.map(u => u.username).join(', ')})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => startEditUser(u)}
-                                  className="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 font-bold text-xs uppercase"
-                                >
-                                  Edit
-                                </button>
-                                {!isSelf && users.length > 1 && (
+                                <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
                                   <button
-                                    onClick={() => deleteUser(u.id)}
-                                    className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 font-bold text-xs uppercase"
+                                    onClick={() => startEditRole(r)}
+                                    className="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 font-bold text-xs uppercase transition-all"
                                   >
-                                    Hapus
+                                    Edit Akses
                                   </button>
-                                )}
+                                  {!r.isSystem && r.id !== 'admin' && (
+                                    <button
+                                      onClick={() => deleteRole(r.id)}
+                                      disabled={assignedUsers.length > 0}
+                                      title={assignedUsers.length > 0 ? "Role masih digunakan oleh akun pengguna" : "Hapus role ini"}
+                                      className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase transition-all ${
+                                        assignedUsers.length > 0
+                                          ? 'opacity-40 cursor-not-allowed bg-slate-800 text-slate-500'
+                                          : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30'
+                                      }`}
+                                    >
+                                      Hapus
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

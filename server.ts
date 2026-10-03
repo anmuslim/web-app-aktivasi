@@ -12,7 +12,8 @@ import {
   INITIAL_TEMPLATES,
   INITIAL_SHORTCUTS,
   DEFAULT_SPEED_PROFILES,
-  DEFAULT_USERS
+  DEFAULT_USERS,
+  DEFAULT_ROLES
 } from './constants.ts';
 
 const app = express();
@@ -22,12 +23,20 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 const DB_FILE = path.resolve(process.cwd(), 'database.json');
 
 // Fallback in-memory database with rich defaults
-let memoryStore = {
+let memoryStore: {
+  oltConfigs: any;
+  templates: any;
+  terminalShortcuts: any;
+  speedProfiles: any[];
+  users: any[];
+  roles: any[];
+} = {
   oltConfigs: { ...INITIAL_OLT_CONFIG },
   templates: { ...INITIAL_TEMPLATES },
   terminalShortcuts: { ...INITIAL_SHORTCUTS },
   speedProfiles: [...DEFAULT_SPEED_PROFILES],
-  users: [...DEFAULT_USERS]
+  users: [...DEFAULT_USERS],
+  roles: [...DEFAULT_ROLES]
 };
 
 // Load database.json if available
@@ -44,7 +53,10 @@ try {
     memoryStore.users = Array.isArray(parsed.users) && parsed.users.length > 0
       ? parsed.users
       : DEFAULT_USERS;
-    console.log(`[Storage] Loaded initial data from database.json: ${Object.keys(memoryStore.oltConfigs).length} OLTs, ${memoryStore.users.length} Users`);
+    memoryStore.roles = Array.isArray(parsed.roles) && parsed.roles.length > 0
+      ? parsed.roles
+      : DEFAULT_ROLES;
+    console.log(`[Storage] Loaded initial data from database.json: ${Object.keys(memoryStore.oltConfigs).length} OLTs, ${memoryStore.users.length} Users, ${memoryStore.roles.length} Roles`);
   }
 } catch (e: any) {
   console.warn('[Storage] Could not parse database.json, using defaults:', e.message);
@@ -142,6 +154,34 @@ async function seedMysqlDatabase(db: any, force = false) {
       }
       console.log(`[MySQL Seed] Berhasil mengisi ${sourceUsers.length} akun user.`);
     }
+
+    try {
+      const [existingRoles]: any = await db.query('SELECT COUNT(*) as count FROM roles');
+      if (force || existingRoles[0]?.count === 0) {
+        const sourceRoles = (memoryStore.roles && memoryStore.roles.length > 0) ? memoryStore.roles : DEFAULT_ROLES;
+        if (force) await db.query('DELETE FROM roles');
+        for (const r of sourceRoles) {
+          await db.query(
+            `INSERT INTO roles (id, name, description, allowedMenus, canEditOtherUsers, canDeleteUsers, canManageRoles, isSystem)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), allowedMenus = VALUES(allowedMenus), canEditOtherUsers = VALUES(canEditOtherUsers), canDeleteUsers = VALUES(canDeleteUsers), canManageRoles = VALUES(canManageRoles)`,
+            [
+              r.id,
+              r.name,
+              r.description || '',
+              JSON.stringify(r.allowedMenus || ['generator']),
+              r.canEditOtherUsers ? 1 : 0,
+              r.canDeleteUsers ? 1 : 0,
+              r.canManageRoles ? 1 : 0,
+              r.isSystem ? 1 : 0
+            ]
+          );
+        }
+        console.log(`[MySQL Seed] Berhasil mengisi ${sourceRoles.length} master role.`);
+      }
+    } catch (e: any) {
+      // Roles table might not exist yet during initial pass
+    }
   } catch (err: any) {
     console.warn('[MySQL Seed Error]:', err.message);
   }
@@ -217,6 +257,20 @@ async function initDb() {
         role VARCHAR(50) DEFAULT 'admin',
         createdAt VARCHAR(50),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        allowedMenus JSON,
+        canEditOtherUsers BOOLEAN DEFAULT FALSE,
+        canDeleteUsers BOOLEAN DEFAULT FALSE,
+        canManageRoles BOOLEAN DEFAULT FALSE,
+        isSystem BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
 
@@ -576,6 +630,22 @@ app.get('/api/data', async (_req, res) => {
       const [shorts]: any = await pool.query('SELECT * FROM shortcuts');
       const [profiles]: any = await pool.query('SELECT * FROM speed_profiles');
       const [users]: any = await pool.query('SELECT * FROM users');
+      let rolesList: any[] = [];
+      try {
+        const [dbRoles]: any = await pool.query('SELECT * FROM roles');
+        if (dbRoles && dbRoles.length > 0) {
+          rolesList = dbRoles.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            description: r.description || '',
+            allowedMenus: typeof r.allowedMenus === 'string' ? JSON.parse(r.allowedMenus) : (r.allowedMenus || ['generator']),
+            canEditOtherUsers: Boolean(r.canEditOtherUsers),
+            canDeleteUsers: Boolean(r.canDeleteUsers),
+            canManageRoles: Boolean(r.canManageRoles),
+            isSystem: Boolean(r.isSystem)
+          }));
+        }
+      } catch {}
 
       const oltConfigs: Record<string, any> = {};
       olts.forEach((row: any) => {
@@ -619,7 +689,8 @@ app.get('/api/data', async (_req, res) => {
         templates: finalTemplates,
         terminalShortcuts: finalShortcuts,
         speedProfiles: finalProfiles,
-        users: finalUsers
+        users: finalUsers,
+        roles: rolesList.length > 0 ? rolesList : (memoryStore.roles && memoryStore.roles.length > 0 ? memoryStore.roles : DEFAULT_ROLES)
       });
     } catch (err: any) {
       console.warn('⚠️ Gagal memuat dari MySQL, beralih ke cache memory:', err.message);
@@ -632,7 +703,8 @@ app.get('/api/data', async (_req, res) => {
     templates: Object.keys(memoryStore.templates).length > 0 ? memoryStore.templates : INITIAL_TEMPLATES,
     terminalShortcuts: Object.keys(memoryStore.terminalShortcuts).length > 0 ? memoryStore.terminalShortcuts : INITIAL_SHORTCUTS,
     speedProfiles: memoryStore.speedProfiles.length > 0 ? memoryStore.speedProfiles : DEFAULT_SPEED_PROFILES,
-    users: memoryStore.users.length > 0 ? memoryStore.users : DEFAULT_USERS
+    users: memoryStore.users.length > 0 ? memoryStore.users : DEFAULT_USERS,
+    roles: memoryStore.roles && memoryStore.roles.length > 0 ? memoryStore.roles : DEFAULT_ROLES
   });
 });
 
@@ -644,7 +716,8 @@ app.all('/api/seed', async (req, res) => {
     templates: { ...INITIAL_TEMPLATES },
     terminalShortcuts: { ...INITIAL_SHORTCUTS },
     speedProfiles: [...DEFAULT_SPEED_PROFILES],
-    users: [...DEFAULT_USERS]
+    users: [...DEFAULT_USERS],
+    roles: [...DEFAULT_ROLES]
   };
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(memoryStore, null, 2), 'utf-8');
@@ -656,7 +729,7 @@ app.all('/api/seed', async (req, res) => {
   return res.json({
     status: 'success',
     message: 'Data awal berhasil di-seed ke database MySQL & lokal!',
-    oltCount: Object.keys(memoryStore.oltConfigs).length
+    data: memoryStore
   });
 });
 
@@ -692,7 +765,7 @@ app.get('/api/test-connection', (req, res) => {
 });
 
 app.post('/api/save', async (req, res) => {
-  const { oltConfigs, templates, terminalShortcuts, speedProfiles, users } = req.body;
+  const { oltConfigs, templates, terminalShortcuts, speedProfiles, users, roles } = req.body;
 
   // Update memory store and persist to database.json
   memoryStore = {
@@ -700,7 +773,8 @@ app.post('/api/save', async (req, res) => {
     templates: templates !== undefined ? templates : memoryStore.templates,
     terminalShortcuts: terminalShortcuts !== undefined ? terminalShortcuts : memoryStore.terminalShortcuts,
     speedProfiles: Array.isArray(speedProfiles) && speedProfiles.length > 0 ? speedProfiles : memoryStore.speedProfiles,
-    users: Array.isArray(users) && users.length > 0 ? users : memoryStore.users
+    users: Array.isArray(users) && users.length > 0 ? users : memoryStore.users,
+    roles: Array.isArray(roles) && roles.length > 0 ? roles : (memoryStore.roles || DEFAULT_ROLES)
   };
 
   try {
@@ -763,6 +837,29 @@ app.post('/api/save', async (req, res) => {
             'INSERT INTO users (id, username, name, password, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
             [u.id, u.username, u.name || u.username, u.password || 'admin', u.role || 'admin', u.createdAt || new Date().toISOString()]
           );
+        }
+      }
+
+      if (Array.isArray(roles)) {
+        try {
+          await connection.query('DELETE FROM roles');
+          for (const r of roles) {
+            await connection.query(
+              'INSERT INTO roles (id, name, description, allowedMenus, canEditOtherUsers, canDeleteUsers, canManageRoles, isSystem) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                r.id,
+                r.name,
+                r.description || '',
+                JSON.stringify(r.allowedMenus || ['generator']),
+                r.canEditOtherUsers ? 1 : 0,
+                r.canDeleteUsers ? 1 : 0,
+                r.canManageRoles ? 1 : 0,
+                r.isSystem ? 1 : 0
+              ]
+            );
+          }
+        } catch (e: any) {
+          console.warn('⚠️ Gagal menyimpan tabel roles di MySQL:', e.message);
         }
       }
 

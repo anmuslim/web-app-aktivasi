@@ -32,15 +32,26 @@ export interface ScriptData {
   [key: string]: any;
 }
 
+export type NavMenu = 'generator' | 'olt' | 'area' | 'template' | 'shortcut' | 'speed' | 'user';
+
+export interface RolePermission {
+  id: string; // e.g. 'admin', 'operator', 'teknisi' or custom id
+  name: string; // Display name, e.g. 'Administrator', 'Operator NOC', 'Teknisi Lapangan'
+  description?: string;
+  allowedMenus: NavMenu[]; // list of accessible menu IDs
+  canEditOtherUsers: boolean; // akses untuk mengubah username / akun pengguna lain
+  canDeleteUsers?: boolean; // akses untuk menghapus akun pengguna
+  canManageRoles?: boolean; // akses untuk mengelola master role & hak akses
+  isSystem?: boolean; // default system role
+}
+
 export interface User {
   id: string;
   username: string;
   name: string;
   password?: string;
-  role: 'admin' | 'operator' | 'teknisi';
+  role: string;
   createdAt?: string;
 }
-
-export type NavMenu = 'generator' | 'olt' | 'area' | 'template' | 'shortcut' | 'speed' | 'user';
 
 

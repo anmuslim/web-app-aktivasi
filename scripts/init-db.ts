@@ -6,7 +6,8 @@ import {
   INITIAL_TEMPLATES,
   INITIAL_SHORTCUTS,
   DEFAULT_SPEED_PROFILES,
-  DEFAULT_USERS
+  DEFAULT_USERS,
+  DEFAULT_ROLES
 } from '../constants.ts';
 
 const DB_CONFIG = {
@@ -110,6 +111,21 @@ async function main() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Tabel roles
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        allowedMenus JSON,
+        canEditOtherUsers BOOLEAN DEFAULT FALSE,
+        canDeleteUsers BOOLEAN DEFAULT FALSE,
+        canManageRoles BOOLEAN DEFAULT FALSE,
+        isSystem BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     console.log('[3/4] Melakukan sinkronisasi & seeding data awal ke MySQL...');
     
     // Tentukan sumber data awal (database.json atau constants.ts)
@@ -118,6 +134,7 @@ async function main() {
     let shortcutData: Record<string, any> = INITIAL_SHORTCUTS;
     let speedData: string[] = DEFAULT_SPEED_PROFILES;
     let userData: any[] = DEFAULT_USERS;
+    let roleData: any[] = DEFAULT_ROLES;
 
     const dbJsonPath = path.resolve(process.cwd(), 'database.json');
     if (fs.existsSync(dbJsonPath)) {
@@ -129,6 +146,7 @@ async function main() {
         if (parsed.terminalShortcuts && Object.keys(parsed.terminalShortcuts).length > 0) shortcutData = parsed.terminalShortcuts;
         if (Array.isArray(parsed.speedProfiles) && parsed.speedProfiles.length > 0) speedData = parsed.speedProfiles;
         if (Array.isArray(parsed.users) && parsed.users.length > 0) userData = parsed.users;
+        if (Array.isArray(parsed.roles) && parsed.roles.length > 0) roleData = parsed.roles;
       } catch (err: any) {
         console.warn('  ⚠️ Menggunakan fallback constants:', err.message);
       }
@@ -188,6 +206,26 @@ async function main() {
       );
     }
     console.log(`  ✓ Users (${userData.length} akun tersimpan)`);
+
+    // 6. Seed Roles
+    for (const r of roleData) {
+      await connection.query(
+        `INSERT INTO roles (id, name, description, allowedMenus, canEditOtherUsers, canDeleteUsers, canManageRoles, isSystem)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), allowedMenus = VALUES(allowedMenus), canEditOtherUsers = VALUES(canEditOtherUsers), canDeleteUsers = VALUES(canDeleteUsers), canManageRoles = VALUES(canManageRoles)`,
+        [
+          r.id,
+          r.name,
+          r.description || '',
+          JSON.stringify(r.allowedMenus || ['generator']),
+          r.canEditOtherUsers ? 1 : 0,
+          r.canDeleteUsers ? 1 : 0,
+          r.canManageRoles ? 1 : 0,
+          r.isSystem ? 1 : 0
+        ]
+      );
+    }
+    console.log(`  ✓ Roles (${roleData.length} master role tersimpan)`);
 
     console.log('[4/4] Menghasilkan file schema.sql lengkap dengan data bawaan...');
     generateSchemaSql(oltData, tplData, shortcutData, speedData, userData);

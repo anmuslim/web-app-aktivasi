@@ -1,4 +1,53 @@
-import { OLTConfig, User } from './types';
+import { OLTConfig, User, RolePermission, NavMenu } from './types';
+
+/**
+ * All Navigation Menus for Permission Checklist
+ */
+export const ALL_NAV_MENUS: { id: NavMenu; label: string; desc: string }[] = [
+  { id: 'generator', label: 'Generator & Terminal', desc: 'Aktivasi OLT, script GPON & live CLI terminal' },
+  { id: 'olt', label: 'Manajemen OLT', desc: 'Kelola data OLT, IP address & kredensial' },
+  { id: 'area', label: 'Area & VLAN', desc: 'Kelola sub-area, VLAN ID & PPP prefix' },
+  { id: 'template', label: 'Template Script', desc: 'Script designer GPON & placeholder otomatis' },
+  { id: 'shortcut', label: 'Shortcut Terminal', desc: 'Koleksi perintah cepat CLI OLT' },
+  { id: 'speed', label: 'Profile / Speed', desc: 'Daftar paket kecepatan internet' },
+  { id: 'user', label: 'Manajemen User', desc: 'Akun petugas, peran master & hak akses' },
+];
+
+/**
+ * Initial Master Roles & Permissions
+ */
+export const DEFAULT_ROLES: RolePermission[] = [
+  {
+    id: 'admin',
+    name: 'Administrator (Super User)',
+    description: 'Akses penuh ke seluruh menu sistem, manajemen role, dan wewenang mengubah data pengguna lain.',
+    allowedMenus: ['generator', 'olt', 'area', 'template', 'shortcut', 'speed', 'user'],
+    canEditOtherUsers: true,
+    canDeleteUsers: true,
+    canManageRoles: true,
+    isSystem: true
+  },
+  {
+    id: 'operator',
+    name: 'Operator NOC',
+    description: 'Akses operasional jaringan OLT, Area & VLAN, Template GPON, dan Paket Speed.',
+    allowedMenus: ['generator', 'olt', 'area', 'template', 'shortcut', 'speed'],
+    canEditOtherUsers: false,
+    canDeleteUsers: false,
+    canManageRoles: false,
+    isSystem: true
+  },
+  {
+    id: 'teknisi',
+    name: 'Teknisi Lapangan',
+    description: 'Akses aktivasi ONT via Generator Script dan Shortcut diagnostik CLI Terminal.',
+    allowedMenus: ['generator', 'shortcut'],
+    canEditOtherUsers: false,
+    canDeleteUsers: false,
+    canManageRoles: false,
+    isSystem: true
+  }
+];
 
 /**
  * Initial Speed Profiles

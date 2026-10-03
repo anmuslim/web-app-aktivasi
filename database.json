@@ -387,5 +387,37 @@
       "role": "admin",
       "createdAt": "2026-09-30T00:00:00.000Z"
     }
+  ],
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Administrator (Super User)",
+      "description": "Akses penuh ke seluruh menu sistem, manajemen role, dan wewenang mengubah data pengguna lain.",
+      "allowedMenus": ["generator", "olt", "area", "template", "shortcut", "speed", "user"],
+      "canEditOtherUsers": true,
+      "canDeleteUsers": true,
+      "canManageRoles": true,
+      "isSystem": true
+    },
+    {
+      "id": "operator",
+      "name": "Operator NOC",
+      "description": "Akses operasional jaringan OLT, Area & VLAN, Template GPON, dan Paket Speed.",
+      "allowedMenus": ["generator", "olt", "area", "template", "shortcut", "speed"],
+      "canEditOtherUsers": false,
+      "canDeleteUsers": false,
+      "canManageRoles": false,
+      "isSystem": true
+    },
+    {
+      "id": "teknisi",
+      "name": "Teknisi Lapangan",
+      "description": "Akses aktivasi ONT via Generator Script dan Shortcut diagnostik CLI Terminal.",
+      "allowedMenus": ["generator", "shortcut"],
+      "canEditOtherUsers": false,
+      "canDeleteUsers": false,
+      "canManageRoles": false,
+      "isSystem": true
+    }
   ]
 }
